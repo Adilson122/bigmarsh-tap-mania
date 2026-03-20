@@ -86,19 +86,21 @@ Deno.serve(async (req) => {
 
       if (action === "tap") {
         const { data: tapData, error: tapError } = await db.rpc("tap_marsh", { _telegram_id: telegramId });
-        if (tapError) throw tapError;
+        if (tapError) throw new Error(tapError.message);
         const { data: state } = await db.rpc("get_state", { _telegram_id: telegramId });
         return new Response(JSON.stringify({ tap: tapData?.[0] ?? {}, state }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
       if (action === "buy_upgrade") {
-        await db.rpc("buy_upgrade", { _telegram_id: telegramId, _upgrade_type: body.upgradeType });
+        const { error } = await db.rpc("buy_upgrade", { _telegram_id: telegramId, _upgrade_type: body.upgradeType });
+        if (error) throw new Error(error.message);
         const { data: state } = await db.rpc("get_state", { _telegram_id: telegramId });
         return new Response(JSON.stringify({ state }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
       if (action === "claim_task") {
-        await db.rpc("claim_task", { _telegram_id: telegramId, _task_id: body.taskId });
+        const { error } = await db.rpc("claim_task", { _telegram_id: telegramId, _task_id: body.taskId });
+        if (error) throw new Error(error.message);
         const { data: state } = await db.rpc("get_state", { _telegram_id: telegramId });
         return new Response(JSON.stringify({ state }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
