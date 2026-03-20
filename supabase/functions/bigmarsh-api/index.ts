@@ -133,6 +133,7 @@ Deno.serve(async (req) => {
           level: Number(body.level ?? 1),
           is_banned: Boolean(body.is_banned ?? false),
         }).eq("telegram_id", Number(body.telegramId));
+        return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
       if (action === "admin_create_task") {
@@ -143,10 +144,12 @@ Deno.serve(async (req) => {
           kind: body.kind ?? "taps_500",
           active_date: new Date().toISOString().slice(0, 10),
         });
+        return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
       if (action === "admin_delete_task") {
         await db.from("tasks").delete().eq("id", body.taskId);
+        return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
       if (action === "admin_dashboard") {
