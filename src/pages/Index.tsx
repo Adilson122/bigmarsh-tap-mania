@@ -52,6 +52,8 @@ const Index = () => {
   const [leaderboard, setLeaderboard] = useState<LeaderboardRow[]>([]);
   const [tapFx, setTapFx] = useState<Array<{ id: number; value: number; x: number }>>([]);
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [busyAction, setBusyAction] = useState<"tap" | "upgrade" | "task" | "referral_copy" | "referral_share" | null>(null);
   const [timedOut, setTimedOut] = useState(false);
 
   const telegramUser = useMemo(() => getTelegramUser(), []);
@@ -125,10 +127,11 @@ const Index = () => {
   useEffect(() => {
     if (!state) return;
     const timer = setInterval(() => {
+      if (busyAction) return;
       bootstrap({ silent: true });
     }, 3000);
     return () => clearInterval(timer);
-  }, [state?.user.telegram_id]);
+  }, [state?.user.telegram_id, busyAction]);
 
   useEffect(() => {
     if (activeTab === "leaderboard") loadLeaderboard();
@@ -138,6 +141,8 @@ const Index = () => {
     if (!state || state.user.energy <= 0) return;
     const fxId = Date.now();
     try {
+      setBusyAction("tap");
+      setActionError(null);
       const data = await callBigMarsh<{ tap: { earned_bmh: number }; state: GameState }>("tap", {
         initData,
         debugUser: telegramUser ?? { id: 777001, first_name: "Dev", username: "bigmarsh_dev" },
@@ -146,25 +151,79 @@ const Index = () => {
       setTapFx((prev) => [...prev, { id: fxId, value: data.tap.earned_bmh, x: Math.floor(Math.random() * 120 - 60) }]);
       getTelegramApp()?.HapticFeedback?.impactOccurred("light");
       setTimeout(() => setTapFx((prev) => prev.filter((f) => f.id !== fxId)), 900);
-    } catch {}
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Não foi possível tapar agora.");
+    } finally {
+      setBusyAction(null);
+    }
   };
 
   const buyUpgrade = async (upgradeType: string) => {
-    await callBigMarsh("buy_upgrade", {
-      initData,
-      upgradeType,
-      debugUser: telegramUser ?? { id: 777001, first_name: "Dev", username: "bigmarsh_dev" },
-    });
-    await bootstrap();
+    try {
+      setBusyAction("upgrade");
+      setActionError(null);
+      await callBigMarsh("buy_upgrade", {
+        initData,
+        upgradeType,
+        debugUser: telegramUser ?? { id: 777001, first_name: "Dev", username: "bigmarsh_dev" },
+      });
+      await bootstrap({ silent: true });
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Falha ao comprar upgrade.");
+    } finally {
+      setBusyAction(null);
+    }
   };
 
   const claimTask = async (taskId: string) => {
-    await callBigMarsh("claim_task", {
-      initData,
-      taskId,
-      debugUser: telegramUser ?? { id: 777001, first_name: "Dev", username: "bigmarsh_dev" },
-    });
-    await bootstrap();
+    try {
+      setBusyAction("task");
+      setActionError(null);
+      await callBigMarsh("claim_task", {
+        initData,
+        taskId,
+        debugUser: telegramUser ?? { id: 777001, first_name: "Dev", username: "bigmarsh_dev" },
+      });
+      await bootstrap({ silent: true });
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Falha ao coletar task.");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const copyReferralLink = async () => {
+    if (!state) return;
+    try {
+      setBusyAction("referral_copy");
+      setActionError(null);
+      await navigator.clipboard.writeText(state.user.referral_link);
+    } catch {
+      setActionError("Não foi possível copiar o link agora.");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const shareReferralLink = async () => {
+    if (!state) return;
+    try {
+      setBusyAction("referral_share");
+      setActionError(null);
+      if (navigator.share) {
+        await navigator.share({
+          title: "BigMarsh",
+          text: "Vem jogar BigMarsh comigo!",
+          url: state.user.referral_link,
+        });
+      } else {
+        window.open(`https://t.me/share/url?url=${encodeURIComponent(state.user.referral_link)}&text=${encodeURIComponent("Vem jogar BigMarsh comigo!")}`, "_blank", "noopener,noreferrer");
+      }
+    } catch {
+      setActionError("Não foi possível compartilhar agora.");
+    } finally {
+      setBusyAction(null);
+    }
   };
 
   if (isBootstrapping && !state) {
@@ -189,33 +248,13 @@ const Index = () => {
     return <main className="flex min-h-screen items-center justify-center text-destructive">{error ?? "Falha ao carregar"}</main>;
   }
 
-  const statusLabel = apiStatus === "online" ? "Online" : apiStatus === "degraded" ? "Lenta" : "Offline";
-  const lastSyncLabel = lastSyncAt
-    ? lastSyncAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
-    : "—";
-
   return (
     <main className="mx-auto min-h-screen max-w-md px-4 pb-28 pt-4">
       <header className="mb-4 rounded-2xl border border-border/70 bg-card/80 p-4 shadow-glow">
         <h1 className="text-2xl font-bold">BigMarsh - Tap to BMH</h1>
         <p className="text-sm text-muted-foreground">{state.airdrop_placeholder}</p>
-        <div className="mt-3 flex items-center justify-between rounded-xl bg-secondary/60 px-3 py-2 text-xs">
-          <div className="flex items-center gap-2">
-            <span
-              className={`h-2 w-2 rounded-full ${
-                apiStatus === "offline" ? "bg-destructive" : apiStatus === "degraded" ? "bg-muted-foreground" : "bg-primary"
-              }`}
-            />
-            <span className="text-muted-foreground">
-              API BigMarsh: <span className={apiStatus === "offline" ? "text-destructive" : "text-foreground"}>{statusLabel}</span>
-            </span>
-          </div>
-          <span className="text-muted-foreground">
-            Sync: {lastSyncLabel}
-            {lastLatencyMs !== null ? ` · ${lastLatencyMs}ms` : ""}
-          </span>
-        </div>
         {isRefreshing && <p className="mt-1 text-xs text-muted-foreground">Atualizando...</p>}
+        {actionError && <p className="mt-2 text-xs text-destructive">{actionError}</p>}
         <div className="mt-3 flex items-center justify-between text-sm">
           <span>Nível {state.user.level}</span>
           <span className="font-semibold text-primary">{state.user.bmh_balance.toLocaleString("pt-BR")} BMH</span>
@@ -255,7 +294,7 @@ const Index = () => {
                 <h2 className="font-semibold capitalize">{u.upgrade_type.replace("_", " ")}</h2>
                 <span className="text-sm text-primary">Lv {u.level}</span>
               </div>
-              <Button className="w-full" onClick={() => buyUpgrade(u.upgrade_type)}>
+              <Button className="w-full" disabled={busyAction !== null} onClick={() => buyUpgrade(u.upgrade_type)}>
                 Comprar ({u.next_cost.toLocaleString("pt-BR")} BMH)
               </Button>
             </Card>
@@ -268,6 +307,10 @@ const Index = () => {
           <Card className="border-border/70 bg-card/85 p-4">
             <p className="text-sm text-muted-foreground">Link único</p>
             <p className="mt-1 break-all text-sm">{state.user.referral_link}</p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <Button variant="secondary" disabled={busyAction !== null} onClick={copyReferralLink}>Copiar link</Button>
+              <Button disabled={busyAction !== null} onClick={shareReferralLink}>Compartilhar</Button>
+            </div>
           </Card>
           <Card className="border-border/70 bg-card/85 p-4">
             <p className="mb-2 font-semibold">Amigos indicados ({state.referrals.length})</p>
@@ -318,7 +361,7 @@ const Index = () => {
               <p className="text-sm text-muted-foreground">{task.description}</p>
               <div className="mt-3 flex items-center justify-between">
                 <span className="text-primary">+{task.reward_bmh.toLocaleString("pt-BR")} BMH</span>
-                <Button disabled={task.completed} onClick={() => claimTask(task.id)}>{task.completed ? "Concluída" : "Coletar"}</Button>
+                <Button disabled={task.completed || busyAction !== null} onClick={() => claimTask(task.id)}>{task.completed ? "Concluída" : "Coletar"}</Button>
               </div>
             </Card>
           ))}
