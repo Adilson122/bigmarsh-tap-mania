@@ -55,6 +55,7 @@ const Index = () => {
   const [actionError, setActionError] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<"tap" | "upgrade" | "task" | "referral_copy" | "referral_share" | null>(null);
   const [timedOut, setTimedOut] = useState(false);
+  const [accountBlocked, setAccountBlocked] = useState(false);
 
   const telegramUser = useMemo(() => getTelegramUser(), []);
   const initData = getTelegramApp()?.initData ?? "";
@@ -82,6 +83,7 @@ const Index = () => {
 
       const latency = Date.now() - requestStartedAt;
       setState(data.state);
+      setAccountBlocked(false);
       setApiStatus(latency > 3000 ? "degraded" : "online");
       setLastSyncAt(new Date());
       setLastLatencyMs(latency);
@@ -89,6 +91,14 @@ const Index = () => {
       setTimedOut(false);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Erro ao iniciar o app";
+
+      if (msg === "user_banned") {
+        setAccountBlocked(true);
+        setError(null);
+        setTimedOut(false);
+        return;
+      }
+
       setApiStatus("offline");
 
       if (msg === "timeout") {
@@ -152,7 +162,13 @@ const Index = () => {
       getTelegramApp()?.HapticFeedback?.impactOccurred("light");
       setTimeout(() => setTapFx((prev) => prev.filter((f) => f.id !== fxId)), 900);
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : "Não foi possível tapar agora.");
+      const msg = e instanceof Error ? e.message : "Não foi possível tapar agora.";
+      if (msg === "user_banned") {
+        setAccountBlocked(true);
+        setActionError(null);
+      } else {
+        setActionError(msg);
+      }
     } finally {
       setBusyAction(null);
     }
@@ -169,7 +185,13 @@ const Index = () => {
       });
       await bootstrap({ silent: true });
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : "Falha ao comprar upgrade.");
+      const msg = e instanceof Error ? e.message : "Falha ao comprar upgrade.";
+      if (msg === "user_banned") {
+        setAccountBlocked(true);
+        setActionError(null);
+      } else {
+        setActionError(msg);
+      }
     } finally {
       setBusyAction(null);
     }
@@ -186,7 +208,13 @@ const Index = () => {
       });
       await bootstrap({ silent: true });
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : "Falha ao coletar task.");
+      const msg = e instanceof Error ? e.message : "Falha ao coletar task.";
+      if (msg === "user_banned") {
+        setAccountBlocked(true);
+        setActionError(null);
+      } else {
+        setActionError(msg);
+      }
     } finally {
       setBusyAction(null);
     }
@@ -246,6 +274,26 @@ const Index = () => {
 
   if (!state || error) {
     return <main className="flex min-h-screen items-center justify-center text-destructive">{error ?? "Falha ao carregar"}</main>;
+  }
+
+  if (accountBlocked) {
+    return (
+      <main className="mx-auto flex min-h-screen w-full max-w-md items-center px-4">
+        <Card className="w-full border-border/70 bg-card/85 p-5">
+          <div className="mb-4 rounded-xl bg-secondary/60 px-3 py-2 text-xs">
+            <span className="text-muted-foreground">Status da conta: </span>
+            <span className="font-semibold text-destructive">Bloqueada</span>
+          </div>
+          <h1 className="text-lg font-semibold">Sua conta está temporariamente bloqueada</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Não se preocupe: seus dados foram preservados. Entre em contato com o suporte/admin para revisão.
+          </p>
+          <Button className="mt-4 w-full" onClick={() => bootstrap({ silent: false })}>
+            Tentar novamente
+          </Button>
+        </Card>
+      </main>
+    );
   }
 
   return (
