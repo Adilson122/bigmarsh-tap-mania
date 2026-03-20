@@ -1,1 +1,4 @@
 project_id = "fdulfospsczwisoufevk"
+
+[functions.bigmarsh-api]
+verify_jwt = false
