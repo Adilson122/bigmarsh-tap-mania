@@ -26,7 +26,25 @@ type AdminStats = {
   dau?: number;
 };
 
-type AdminTab = "real" | "fake" | "tasks" | "referrals" | "airdrop";
+type TaskSettings = {
+  referral_goal: number;
+  referral_reward_bmh: number;
+  tap_goal: number;
+  tap_reward_bmh: number;
+};
+
+type MonetizationPass = {
+  pass_type: "weekly" | "monthly";
+  title: string;
+  duration_days: number;
+  price_usd: number;
+  benefits: string;
+  is_visible: boolean;
+  is_enabled: boolean;
+  sort_order: number;
+};
+
+type AdminTab = "real" | "fake" | "tasks" | "monetization" | "referrals" | "airdrop";
 
 const Admin = () => {
   const initData = getTelegramApp()?.initData ?? "";
@@ -46,6 +64,14 @@ const Admin = () => {
   const [newTaskReward, setNewTaskReward] = useState(5000);
   const [newTaskDescription, setNewTaskDescription] = useState("Task criada pelo admin");
   const [newTaskKind, setNewTaskKind] = useState<"taps_500" | "invite_1">("taps_500");
+  const [newTaskTarget, setNewTaskTarget] = useState(500);
+  const [taskSettings, setTaskSettings] = useState<TaskSettings>({
+    referral_goal: 1,
+    referral_reward_bmh: 8000,
+    tap_goal: 500,
+    tap_reward_bmh: 6000,
+  });
+  const [passes, setPasses] = useState<MonetizationPass[]>([]);
   const [panelStatus, setPanelStatus] = useState<"online" | "degraded" | "offline">("online");
   const [panelLatency, setPanelLatency] = useState<number | null>(null);
   const [panelSyncAt, setPanelSyncAt] = useState<Date | null>(null);
@@ -74,6 +100,10 @@ const Admin = () => {
       setTasks(data.tasks);
       setReferrals(data.referrals);
       setSnapshot(data.snapshot);
+      if (data.task_settings) {
+        setTaskSettings(data.task_settings);
+      }
+      setPasses(data.monetization_passes ?? []);
     } catch (e) {
       setPanelStatus("offline");
       setPanelError(e instanceof Error ? e.message : "Erro ao carregar painel");
@@ -137,6 +167,26 @@ const Admin = () => {
   const panelStatusLabel = panelStatus === "online" ? "Online" : panelStatus === "degraded" ? "Lenta" : "Offline";
 
   const usersToRender = activeTab === "fake" ? fakeUsers : realUsers;
+  const passByType = (type: "weekly" | "monthly") =>
+    passes.find((p) => p.pass_type === type) ?? {
+      pass_type: type,
+      title: type === "weekly" ? "Passe Semanal" : "Passe Mensal",
+      duration_days: type === "weekly" ? 7 : 30,
+      price_usd: 0,
+      benefits: "",
+      is_visible: false,
+      is_enabled: false,
+      sort_order: type === "weekly" ? 1 : 2,
+    };
+
+  const updatePass = (type: "weekly" | "monthly", updater: (base: MonetizationPass) => MonetizationPass) => {
+    setPasses((prev) => {
+      const existing = prev.find((p) => p.pass_type === type) ?? passByType(type);
+      const next = updater(existing);
+      const filtered = prev.filter((p) => p.pass_type !== type);
+      return [...filtered, next].sort((a, b) => a.sort_order - b.sort_order);
+    });
+  };
 
   return (
     <main className="mx-auto min-h-screen max-w-4xl space-y-4 px-4 py-4">
@@ -174,6 +224,7 @@ const Admin = () => {
           <Button variant={activeTab === "real" ? "default" : "secondary"} onClick={() => setActiveTab("real")}>Usuários reais</Button>
           <Button variant={activeTab === "fake" ? "default" : "secondary"} onClick={() => setActiveTab("fake")}>Usuários fake</Button>
           <Button variant={activeTab === "tasks" ? "default" : "secondary"} onClick={() => setActiveTab("tasks")}>Tasks</Button>
+          <Button variant={activeTab === "monetization" ? "default" : "secondary"} onClick={() => setActiveTab("monetization")}>Monetização</Button>
           <Button variant={activeTab === "referrals" ? "default" : "secondary"} onClick={() => setActiveTab("referrals")}>Referrals</Button>
           <Button variant={activeTab === "airdrop" ? "default" : "secondary"} onClick={() => setActiveTab("airdrop")}>Airdrop</Button>
         </div>
@@ -206,14 +257,88 @@ const Admin = () => {
 
       {activeTab === "tasks" && (
         <Card className="border-border/70 bg-card/85 p-4">
-          <p className="mb-2 font-semibold">Tasks / Upgrades</p>
+          <p className="mb-2 font-semibold">Configuração automática de tasks</p>
+          <div className="mb-4 grid gap-2 md:grid-cols-2">
+            <Input
+              placeholder="Meta de taps"
+              type="number"
+              value={taskSettings.tap_goal}
+              onChange={(e) => setTaskSettings((prev) => ({ ...prev, tap_goal: Number(e.target.value) }))}
+            />
+            <Input
+              placeholder="Recompensa taps (BMH)"
+              type="number"
+              value={taskSettings.tap_reward_bmh}
+              onChange={(e) => setTaskSettings((prev) => ({ ...prev, tap_reward_bmh: Number(e.target.value) }))}
+            />
+            <Input
+              placeholder="Meta de referrals"
+              type="number"
+              value={taskSettings.referral_goal}
+              onChange={(e) => setTaskSettings((prev) => ({ ...prev, referral_goal: Number(e.target.value) }))}
+            />
+            <Input
+              placeholder="Recompensa referrals (BMH)"
+              type="number"
+              value={taskSettings.referral_reward_bmh}
+              onChange={(e) => setTaskSettings((prev) => ({ ...prev, referral_reward_bmh: Number(e.target.value) }))}
+            />
+          </div>
+          <div className="mb-4">
+            <Button
+              disabled={loadingAction !== null}
+              onClick={async () => {
+                try {
+                  setLoadingAction("save-task-settings");
+                  setPanelError(null);
+                  await callBigMarsh("admin_save_task_settings", {
+                    adminToken: token,
+                    ...taskSettings,
+                    initData,
+                    debugUser,
+                  });
+                  await loadPanel(token);
+                } catch (e) {
+                  setPanelError(e instanceof Error ? e.message : "Erro ao salvar configuração de tasks");
+                } finally {
+                  setLoadingAction(null);
+                }
+              }}
+            >
+              Salvar tasks automáticas
+            </Button>
+          </div>
+
+          <p className="mb-2 font-semibold">Task manual do dia</p>
           <div className="mb-4 grid gap-2 md:grid-cols-2">
             <Input placeholder="Título" value={newTaskTitle} onChange={(e) => setNewTaskTitle(e.target.value)} />
             <Input placeholder="Recompensa BMH" type="number" value={newTaskReward} onChange={(e) => setNewTaskReward(Number(e.target.value))} />
             <Input placeholder="Descrição" value={newTaskDescription} onChange={(e) => setNewTaskDescription(e.target.value)} />
+            <Input
+              placeholder={newTaskKind === "invite_1" ? "Meta de convites" : "Meta de taps"}
+              type="number"
+              value={newTaskTarget}
+              onChange={(e) => setNewTaskTarget(Number(e.target.value))}
+            />
             <div className="grid grid-cols-2 gap-2">
-              <Button variant={newTaskKind === "taps_500" ? "default" : "secondary"} onClick={() => setNewTaskKind("taps_500")}>Tap 500</Button>
-              <Button variant={newTaskKind === "invite_1" ? "default" : "secondary"} onClick={() => setNewTaskKind("invite_1")}>Convide 1</Button>
+              <Button
+                variant={newTaskKind === "taps_500" ? "default" : "secondary"}
+                onClick={() => {
+                  setNewTaskKind("taps_500");
+                  setNewTaskTarget((prev) => (prev <= 0 ? 500 : prev));
+                }}
+              >
+                Tap
+              </Button>
+              <Button
+                variant={newTaskKind === "invite_1" ? "default" : "secondary"}
+                onClick={() => {
+                  setNewTaskKind("invite_1");
+                  setNewTaskTarget((prev) => (prev <= 0 ? 1 : prev));
+                }}
+              >
+                Referral
+              </Button>
             </div>
           </div>
           <div className="mb-4">
@@ -229,6 +354,7 @@ const Admin = () => {
                     reward_bmh: newTaskReward,
                     description: newTaskDescription,
                     kind: newTaskKind,
+                    targetValue: newTaskTarget,
                     initData,
                     debugUser,
                   });
@@ -246,7 +372,7 @@ const Admin = () => {
           <div className="space-y-2 text-xs">
             {tasks.map((t) => (
               <div key={t.id} className="flex items-center justify-between rounded-lg bg-secondary/80 px-3 py-2">
-                <span>{t.title} (+{t.reward_bmh} BMH)</span>
+                <span>{t.title} ({t.target_value ?? "-"}) (+{t.reward_bmh} BMH)</span>
                 <Button
                   variant="destructive"
                   disabled={loadingAction !== null}
@@ -267,6 +393,75 @@ const Admin = () => {
                 </Button>
               </div>
             ))}
+          </div>
+        </Card>
+      )}
+
+      {activeTab === "monetization" && (
+        <Card className="border-border/70 bg-card/85 p-4">
+          <p className="mb-2 font-semibold">Passes (USD)</p>
+          <div className="space-y-4">
+            {(["weekly", "monthly"] as const).map((type) => {
+              const pass = passByType(type);
+              return (
+                <div key={type} className="rounded-lg bg-secondary/80 p-3 text-xs">
+                  <p className="mb-2 font-semibold">{type === "weekly" ? "Passe Semanal" : "Passe Mensal"}</p>
+                  <div className="grid gap-2 md:grid-cols-2">
+                    <Input value={pass.title} onChange={(e) => updatePass(type, (base) => ({ ...base, title: e.target.value }))} />
+                    <Input
+                      type="number"
+                      value={pass.price_usd}
+                      onChange={(e) => updatePass(type, (base) => ({ ...base, price_usd: Number(e.target.value) }))}
+                    />
+                    <Input
+                      type="number"
+                      value={pass.duration_days}
+                      onChange={(e) => updatePass(type, (base) => ({ ...base, duration_days: Number(e.target.value) }))}
+                    />
+                    <Input
+                      value={pass.benefits}
+                      onChange={(e) => updatePass(type, (base) => ({ ...base, benefits: e.target.value }))}
+                      placeholder="Vantagens"
+                    />
+                    <Button
+                      variant={pass.is_enabled ? "default" : "secondary"}
+                      onClick={() => updatePass(type, (base) => ({ ...base, is_enabled: !base.is_enabled }))}
+                    >
+                      {pass.is_enabled ? "Ativado" : "Desativado"}
+                    </Button>
+                    <Button
+                      variant={pass.is_visible ? "default" : "secondary"}
+                      onClick={() => updatePass(type, (base) => ({ ...base, is_visible: !base.is_visible }))}
+                    >
+                      {pass.is_visible ? "Visível" : "Oculto"}
+                    </Button>
+                  </div>
+                  <Button
+                    className="mt-2"
+                    disabled={loadingAction !== null}
+                    onClick={async () => {
+                      try {
+                        setLoadingAction(`save-pass-${type}`);
+                        setPanelError(null);
+                        await callBigMarsh("admin_save_pass", {
+                          adminToken: token,
+                          ...pass,
+                          initData,
+                          debugUser,
+                        });
+                        await loadPanel(token);
+                      } catch (e) {
+                        setPanelError(e instanceof Error ? e.message : "Erro ao salvar passe");
+                      } finally {
+                        setLoadingAction(null);
+                      }
+                    }}
+                  >
+                    Salvar passe
+                  </Button>
+                </div>
+              );
+            })}
           </div>
         </Card>
       )}
