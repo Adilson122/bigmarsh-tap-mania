@@ -30,20 +30,44 @@ const Admin = () => {
   const [referrals, setReferrals] = useState<any[]>([]);
   const [snapshot, setSnapshot] = useState<any[]>([]);
   const [query, setQuery] = useState("");
+  const [panelStatus, setPanelStatus] = useState<"online" | "degraded" | "offline">("online");
+  const [panelLatency, setPanelLatency] = useState<number | null>(null);
+  const [panelSyncAt, setPanelSyncAt] = useState<Date | null>(null);
+  const [loadingAction, setLoadingAction] = useState<string | null>(null);
+  const [panelError, setPanelError] = useState<string | null>(null);
 
   const loadPanel = async (adminToken: string) => {
-    const data = await callBigMarsh<any>("admin_dashboard", { adminToken, initData, debugUser, query });
-    setStats(data.stats);
-    setUsers(data.users);
-    setTasks(data.tasks);
-    setReferrals(data.referrals);
-    setSnapshot(data.snapshot);
+    const startedAt = Date.now();
+    try {
+      setPanelError(null);
+      const data = await callBigMarsh<any>("admin_dashboard", { adminToken, initData, debugUser, query });
+      const latency = Date.now() - startedAt;
+      setPanelStatus(latency > 3000 ? "degraded" : "online");
+      setPanelLatency(latency);
+      setPanelSyncAt(new Date());
+      setStats(data.stats);
+      setUsers(data.users);
+      setTasks(data.tasks);
+      setReferrals(data.referrals);
+      setSnapshot(data.snapshot);
+    } catch (e) {
+      setPanelStatus("offline");
+      setPanelError(e instanceof Error ? e.message : "Erro ao carregar painel");
+    }
   };
 
   const login = async () => {
-    const data = await callBigMarsh<{ token: string }>("admin_login", { username, password, initData, debugUser });
-    setToken(data.token);
-    await loadPanel(data.token);
+    try {
+      setLoadingAction("login");
+      setPanelError(null);
+      const data = await callBigMarsh<{ token: string }>("admin_login", { username, password, initData, debugUser });
+      setToken(data.token);
+      await loadPanel(data.token);
+    } catch (e) {
+      setPanelError(e instanceof Error ? e.message : "Falha no login admin");
+    } finally {
+      setLoadingAction(null);
+    }
   };
 
   if (!token) {
@@ -53,15 +77,37 @@ const Admin = () => {
           <h1 className="text-xl font-semibold">BigMarsh Admin</h1>
           <Input placeholder="Usuário" value={username} onChange={(e) => setUsername(e.target.value)} />
           <Input placeholder="Senha" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
-          <Button onClick={login}>Entrar</Button>
+          {panelError && <p className="text-sm text-destructive">{panelError}</p>}
+          <Button disabled={loadingAction !== null} onClick={login}>Entrar</Button>
         </Card>
       </main>
     );
   }
 
+  const panelSyncLabel = panelSyncAt
+    ? panelSyncAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    : "—";
+  const panelStatusLabel = panelStatus === "online" ? "Online" : panelStatus === "degraded" ? "Lenta" : "Offline";
+
   return (
     <main className="mx-auto min-h-screen max-w-4xl space-y-4 px-4 py-4">
       <h1 className="text-2xl font-bold">Admin Dashboard</h1>
+
+      <Card className="border-border/70 bg-card/85 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-secondary/60 px-3 py-2 text-xs">
+          <div className="flex items-center gap-2">
+            <span className={`h-2 w-2 rounded-full ${panelStatus === "offline" ? "bg-destructive" : panelStatus === "degraded" ? "bg-muted-foreground" : "bg-primary"}`} />
+            <span className="text-muted-foreground">
+              API BigMarsh: <span className={panelStatus === "offline" ? "text-destructive" : "text-foreground"}>{panelStatusLabel}</span>
+            </span>
+          </div>
+          <span className="text-muted-foreground">
+            Último sync: {panelSyncLabel}
+            {panelLatency !== null ? ` · ${panelLatency}ms` : ""}
+          </span>
+        </div>
+        {panelError && <p className="mt-2 text-xs text-destructive">{panelError}</p>}
+      </Card>
 
       <Card className="grid gap-3 border-border/70 bg-card/85 p-4 md:grid-cols-3">
         <div>Total usuários: <span className="text-primary">{stats?.total_users ?? 0}</span></div>
@@ -72,7 +118,7 @@ const Admin = () => {
       <Card className="border-border/70 bg-card/85 p-4">
         <div className="mb-2 flex gap-2">
           <Input placeholder="Buscar usuário" value={query} onChange={(e) => setQuery(e.target.value)} />
-          <Button onClick={() => loadPanel(token)}>Buscar</Button>
+          <Button disabled={loadingAction !== null} onClick={() => loadPanel(token)}>Buscar</Button>
         </div>
         <div className="space-y-2">
           {users.map((u) => (
@@ -82,12 +128,28 @@ const Admin = () => {
               <Input value={u.energy} onChange={(e) => setUsers((prev) => prev.map((item) => item.telegram_id === u.telegram_id ? { ...item, energy: Number(e.target.value) } : item))} />
               <Input value={u.level} onChange={(e) => setUsers((prev) => prev.map((item) => item.telegram_id === u.telegram_id ? { ...item, level: Number(e.target.value) } : item))} />
               <Button onClick={async () => {
-                await callBigMarsh("admin_update_user", { adminToken: token, telegramId: u.telegram_id, bmh_balance: u.bmh_balance, energy: u.energy, level: u.level, is_banned: u.is_banned, initData, debugUser });
-                await loadPanel(token);
+                try {
+                  setLoadingAction(`save-${u.telegram_id}`);
+                  setPanelError(null);
+                  await callBigMarsh("admin_update_user", { adminToken: token, telegramId: u.telegram_id, bmh_balance: u.bmh_balance, energy: u.energy, level: u.level, is_banned: u.is_banned, initData, debugUser });
+                  await loadPanel(token);
+                } catch (e) {
+                  setPanelError(e instanceof Error ? e.message : "Erro ao salvar usuário");
+                } finally {
+                  setLoadingAction(null);
+                }
               }}>Salvar</Button>
               <Button variant="destructive" onClick={async () => {
-                await callBigMarsh("admin_update_user", { adminToken: token, telegramId: u.telegram_id, bmh_balance: u.bmh_balance, energy: u.energy, level: u.level, is_banned: !u.is_banned, initData, debugUser });
-                await loadPanel(token);
+                try {
+                  setLoadingAction(`ban-${u.telegram_id}`);
+                  setPanelError(null);
+                  await callBigMarsh("admin_update_user", { adminToken: token, telegramId: u.telegram_id, bmh_balance: u.bmh_balance, energy: u.energy, level: u.level, is_banned: !u.is_banned, initData, debugUser });
+                  await loadPanel(token);
+                } catch (e) {
+                  setPanelError(e instanceof Error ? e.message : "Erro ao banir/desbanir");
+                } finally {
+                  setLoadingAction(null);
+                }
               }}>{u.is_banned ? "Desbanir" : "Banir"}</Button>
             </div>
           ))}
@@ -110,14 +172,30 @@ const Admin = () => {
             <div key={t.id} className="flex items-center justify-between rounded-lg bg-secondary/80 px-3 py-2">
               <span>{t.title} (+{t.reward_bmh} BMH)</span>
               <Button variant="destructive" onClick={async () => {
-                await callBigMarsh("admin_delete_task", { adminToken: token, taskId: t.id, initData, debugUser });
-                await loadPanel(token);
+                try {
+                  setLoadingAction(`delete-task-${t.id}`);
+                  setPanelError(null);
+                  await callBigMarsh("admin_delete_task", { adminToken: token, taskId: t.id, initData, debugUser });
+                  await loadPanel(token);
+                } catch (e) {
+                  setPanelError(e instanceof Error ? e.message : "Erro ao excluir task");
+                } finally {
+                  setLoadingAction(null);
+                }
               }}>Excluir</Button>
             </div>
           ))}
           <Button onClick={async () => {
-            await callBigMarsh("admin_create_task", { adminToken: token, title: "Task custom", reward_bmh: 5000, description: "Task criada pelo admin", kind: "taps_500", initData, debugUser });
-            await loadPanel(token);
+            try {
+              setLoadingAction("create-task");
+              setPanelError(null);
+              await callBigMarsh("admin_create_task", { adminToken: token, title: "Task custom", reward_bmh: 5000, description: "Task criada pelo admin", kind: "taps_500", initData, debugUser });
+              await loadPanel(token);
+            } catch (e) {
+              setPanelError(e instanceof Error ? e.message : "Erro ao criar task");
+            } finally {
+              setLoadingAction(null);
+            }
           }}>Criar task teste</Button>
         </div>
       </Card>
