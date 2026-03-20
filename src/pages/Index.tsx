@@ -25,32 +25,70 @@ const tabs: Array<{ key: TabKey; label: string; icon: typeof Zap }> = [
   { key: "tasks", label: "Tasks", icon: ListChecks },
 ];
 
+const BOOT_TIMEOUT_MS = 8000;
+
+const withTimeout = async <T,>(promise: Promise<T>, ms: number): Promise<T> => {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error("timeout")), ms);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+};
+
 const Index = () => {
   const [state, setState] = useState<GameState | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [isBootstrapping, setIsBootstrapping] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>("tap");
   const [lbScope, setLbScope] = useState<"all_time" | "weekly" | "friends">("all_time");
   const [leaderboard, setLeaderboard] = useState<LeaderboardRow[]>([]);
   const [tapFx, setTapFx] = useState<Array<{ id: number; value: number; x: number }>>([]);
   const [error, setError] = useState<string | null>(null);
+  const [timedOut, setTimedOut] = useState(false);
 
   const telegramUser = useMemo(() => getTelegramUser(), []);
   const initData = getTelegramApp()?.initData ?? "";
 
-  const bootstrap = async () => {
-    setLoading(true);
-    setError(null);
+  const bootstrap = async ({ silent = false }: { silent?: boolean } = {}) => {
+    if (silent) {
+      setIsRefreshing(true);
+    } else {
+      setIsBootstrapping(true);
+      setTimedOut(false);
+      setError(null);
+    }
+
     try {
-      const data = await callBigMarsh<{ state: GameState }>("init", {
-        initData,
-        startParam: getStartParam(),
-        debugUser: telegramUser ?? { id: 777001, first_name: "Dev", username: "bigmarsh_dev" },
-      });
+      const data = await withTimeout(
+        callBigMarsh<{ state: GameState }>("init", {
+          initData,
+          startParam: getStartParam(),
+          debugUser: telegramUser ?? { id: 777001, first_name: "Dev", username: "bigmarsh_dev" },
+        }),
+        BOOT_TIMEOUT_MS,
+      );
       setState(data.state);
+      setError(null);
+      setTimedOut(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Erro ao iniciar o app");
+      const msg = e instanceof Error ? e.message : "Erro ao iniciar o app";
+      if (msg === "timeout") {
+        setTimedOut(true);
+        setError("Conexão demorou demais.");
+      } else {
+        setError("Falha ao conectar com BigMarsh.");
+      }
     } finally {
-      setLoading(false);
+      if (silent) {
+        setIsRefreshing(false);
+      } else {
+        setIsBootstrapping(false);
+      }
     }
   };
 
@@ -69,13 +107,13 @@ const Index = () => {
 
   useEffect(() => {
     setupTelegram();
-    bootstrap();
+    bootstrap({ silent: false });
   }, []);
 
   useEffect(() => {
     if (!state) return;
     const timer = setInterval(() => {
-      bootstrap();
+      bootstrap({ silent: true });
     }, 3000);
     return () => clearInterval(timer);
   }, [state?.user.telegram_id]);
@@ -117,8 +155,22 @@ const Index = () => {
     await bootstrap();
   };
 
-  if (loading) {
-    return <main className="flex min-h-screen items-center justify-center text-muted-foreground">Conectando BigMarsh...</main>;
+  if (isBootstrapping && !state) {
+    return (
+      <main className="flex min-h-screen items-center justify-center px-6">
+        <div className="w-full max-w-sm rounded-2xl border border-border/70 bg-card/85 p-5 text-center">
+          <p className="text-base font-medium text-foreground">Conectando BigMarsh...</p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {timedOut ? "A conexão expirou." : "Sincronizando sua conta no Telegram."}
+          </p>
+          {(timedOut || error) && (
+            <Button className="mt-4 w-full" onClick={() => bootstrap({ silent: false })}>
+              Tentar novamente
+            </Button>
+          )}
+        </div>
+      </main>
+    );
   }
 
   if (!state || error) {
@@ -130,6 +182,7 @@ const Index = () => {
       <header className="mb-4 rounded-2xl border border-border/70 bg-card/80 p-4 shadow-glow">
         <h1 className="text-2xl font-bold">BigMarsh - Tap to BMH</h1>
         <p className="text-sm text-muted-foreground">{state.airdrop_placeholder}</p>
+        {isRefreshing && <p className="mt-1 text-xs text-muted-foreground">Atualizando...</p>}
         <div className="mt-3 flex items-center justify-between text-sm">
           <span>Nível {state.user.level}</span>
           <span className="font-semibold text-primary">{state.user.bmh_balance.toLocaleString("pt-BR")} BMH</span>
