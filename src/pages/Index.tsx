@@ -41,6 +41,11 @@ const withTimeout = async <T,>(promise: Promise<T>, ms: number): Promise<T> => {
   }
 };
 
+const isAdTask = (task: GameState["tasks"][number]) => {
+  const kind = String(task.kind ?? "").toLowerCase();
+  return kind === "watch_ad" || kind === "ad_watch";
+};
+
 const Index = () => {
   const [state, setState] = useState<GameState | null>(null);
   const [isBootstrapping, setIsBootstrapping] = useState(true);
@@ -259,6 +264,29 @@ const Index = () => {
 
   const handleTaskAction = async (task: GameState["tasks"][number]) => {
     if (task.completed) return;
+
+    if (isAdTask(task) && !task.claimable) {
+      const monetagSdk = (window as Window & { show_10755955?: () => Promise<unknown> }).show_10755955;
+      if (!monetagSdk) {
+        setActionError("Anúncio indisponível no momento.");
+        return;
+      }
+
+      try {
+        setBusyAction("task");
+        setActionError(null);
+
+        await monetagSdk();
+        await claimTask(task.id);
+      } catch {
+        setActionError("Não foi possível carregar o anúncio agora.");
+      } finally {
+        setBusyAction(null);
+      }
+
+      return;
+    }
+
     if (task.claimable) {
       await claimTask(task.id);
       return;

@@ -27,7 +27,7 @@ export type GameState = {
     completed: boolean;
     claimable?: boolean;
     target_value?: number;
-    kind: "taps_500" | "invite_1";
+    kind: "taps_500" | "invite_1" | "watch_ad" | "ad_watch";
   }>;
   referrals: Array<{
     telegram_id: number;
