@@ -8,11 +8,46 @@ const corsHeaders = {
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN")!;
+const botUsername = Deno.env.get("BIGMARSH_BOT_USERNAME") ?? "Bigmarsh_bot";
 
 const ADMIN_USERNAME = Deno.env.get("BIGMARSH_ADMIN_USERNAME") ?? "admin";
 const ADMIN_PASSWORD = Deno.env.get("BIGMARSH_ADMIN_PASSWORD") ?? "";
 
 const db = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
+
+const toDateKey = (value: string) => value.slice(0, 10);
+
+const normalizeState = (state: any, telegramId: number) => {
+  if (!state || typeof state !== "object") return state;
+
+  const today = new Date().toISOString().slice(0, 10);
+  const referrals = Array.isArray(state.referrals) ? state.referrals : [];
+  const invitedToday = referrals.filter((r: any) => typeof r?.created_at === "string" && toDateKey(r.created_at) === today).length;
+
+  return {
+    ...state,
+    user: {
+      ...state.user,
+      referral_link: `https://t.me/${botUsername}?startapp=${telegramId}`,
+    },
+    tasks: Array.isArray(state.tasks)
+      ? state.tasks.map((task: any) => {
+          const completed = Boolean(task?.completed);
+          let claimable = false;
+
+          if (!completed) {
+            if (task?.kind === "taps_500") claimable = Number(state?.user?.total_taps ?? 0) >= 500;
+            if (task?.kind === "invite_1") claimable = invitedToday >= 1;
+          }
+
+          return {
+            ...task,
+            claimable,
+          };
+        })
+      : [],
+  };
+};
 
 const toHex = (arr: ArrayBuffer) => [...new Uint8Array(arr)].map((b) => b.toString(16).padStart(2, "0")).join("");
 
@@ -81,28 +116,33 @@ Deno.serve(async (req) => {
         });
 
         const { data: state } = await db.rpc("get_state", { _telegram_id: telegramId });
-        return new Response(JSON.stringify({ state }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        const normalized = normalizeState(state, telegramId);
+        return new Response(JSON.stringify({ state: normalized }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
       if (action === "tap") {
         const { data: tapData, error: tapError } = await db.rpc("tap_marsh", { _telegram_id: telegramId });
         if (tapError) throw new Error(tapError.message);
         const { data: state } = await db.rpc("get_state", { _telegram_id: telegramId });
-        return new Response(JSON.stringify({ tap: tapData?.[0] ?? {}, state }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        const normalized = normalizeState(state, telegramId);
+        return new Response(JSON.stringify({ tap: tapData?.[0] ?? {}, state: normalized }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
       if (action === "buy_upgrade") {
-        const { error } = await db.rpc("buy_upgrade", { _telegram_id: telegramId, _upgrade_type: body.upgradeType });
+        const { data: upgradeData, error } = await db.rpc("buy_upgrade", { _telegram_id: telegramId, _upgrade_type: body.upgradeType });
         if (error) throw new Error(error.message);
+        if (!upgradeData?.[0]?.ok) throw new Error("insufficient_balance");
         const { data: state } = await db.rpc("get_state", { _telegram_id: telegramId });
-        return new Response(JSON.stringify({ state }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        const normalized = normalizeState(state, telegramId);
+        return new Response(JSON.stringify({ state: normalized }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
       if (action === "claim_task") {
         const { error } = await db.rpc("claim_task", { _telegram_id: telegramId, _task_id: body.taskId });
         if (error) throw new Error(error.message);
         const { data: state } = await db.rpc("get_state", { _telegram_id: telegramId });
-        return new Response(JSON.stringify({ state }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        const normalized = normalizeState(state, telegramId);
+        return new Response(JSON.stringify({ state: normalized }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
       if (action === "leaderboard") {
@@ -137,13 +177,13 @@ Deno.serve(async (req) => {
       }
 
       if (action === "admin_create_task") {
-        await db.from("tasks").insert({
+        await db.from("tasks").upsert({
           title: body.title,
           reward_bmh: Number(body.reward_bmh ?? 0),
-          description: body.description,
+          description: body.description ?? null,
           kind: body.kind ?? "taps_500",
           active_date: new Date().toISOString().slice(0, 10),
-        });
+        }, { onConflict: "kind,active_date" });
         return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
@@ -154,11 +194,13 @@ Deno.serve(async (req) => {
 
       if (action === "admin_dashboard") {
         const query = String(body.query ?? "");
-        const [{ data: stats }, { data: taskRows }, { data: referralRows }, { data: snapshotRows }] = await Promise.all([
+        const [{ data: stats }, { data: taskRows }, { data: referralRows }, { data: snapshotRows }, { count: allUsersCount }, { count: fakeUsersCount }] = await Promise.all([
           db.rpc("get_admin_stats"),
           db.from("tasks").select("id,title,reward_bmh").eq("active_date", new Date().toISOString().slice(0, 10)).order("created_at", { ascending: false }),
           db.from("referrals").select("id,referrer_id,referred_id,created_at").order("created_at", { ascending: false }).limit(100),
           db.from("users").select("telegram_id,daily_streak,referrals_count").or("daily_streak.gt.7,referrals_count.gt.5").limit(500),
+          db.from("users").select("telegram_id", { count: "exact", head: true }),
+          db.from("users").select("telegram_id", { count: "exact", head: true }).or("telegram_id.gte.900000,username.ilike.%ref_master%,username.ilike.%new_marsh%,username.ilike.%dev%"),
         ]);
 
         let usersQuery = db.from("users").select("telegram_id,username,first_name,bmh_balance,energy,level,daily_streak,referrals_count,is_banned").order("created_at", { ascending: false }).limit(100);
@@ -167,7 +209,18 @@ Deno.serve(async (req) => {
         }
         const { data: usersRows } = await usersQuery;
 
-        return new Response(JSON.stringify({ stats, users: usersRows ?? [], tasks: taskRows ?? [], referrals: referralRows ?? [], snapshot: snapshotRows ?? [] }), {
+        const allUsers = Number(allUsersCount ?? 0);
+        const fakeUsers = Number(fakeUsersCount ?? 0);
+        const realUsers = Math.max(0, allUsers - fakeUsers);
+        const mergedStats = {
+          ...(stats ?? {}),
+          total_users: realUsers,
+          real_users: realUsers,
+          fake_users: fakeUsers,
+          total_users_including_fake: allUsers,
+        };
+
+        return new Response(JSON.stringify({ stats: mergedStats, users: usersRows ?? [], tasks: taskRows ?? [], referrals: referralRows ?? [], snapshot: snapshotRows ?? [] }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
@@ -179,7 +232,7 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown_error";
-    const status = message === "user_banned" ? 403 : 500;
+    const status = message === "user_banned" ? 403 : message === "insufficient_balance" ? 400 : 500;
 
     return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "unknown_error" }), {
       status,

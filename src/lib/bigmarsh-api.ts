@@ -25,6 +25,7 @@ export type GameState = {
     description: string;
     reward_bmh: number;
     completed: boolean;
+    claimable?: boolean;
     kind: "taps_500" | "invite_1";
   }>;
   referrals: Array<{
