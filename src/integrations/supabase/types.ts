@@ -46,6 +46,48 @@ export type Database = {
           },
         ]
       }
+      monetization_passes: {
+        Row: {
+          benefits: string
+          created_at: string
+          duration_days: number
+          id: string
+          is_enabled: boolean
+          is_visible: boolean
+          pass_type: string
+          price_usd: number
+          sort_order: number
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          benefits?: string
+          created_at?: string
+          duration_days: number
+          id?: string
+          is_enabled?: boolean
+          is_visible?: boolean
+          pass_type: string
+          price_usd: number
+          sort_order?: number
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          benefits?: string
+          created_at?: string
+          duration_days?: number
+          id?: string
+          is_enabled?: boolean
+          is_visible?: boolean
+          pass_type?: string
+          price_usd?: number
+          sort_order?: number
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       referrals: {
         Row: {
           created_at: string
@@ -118,6 +160,36 @@ export type Database = {
           },
         ]
       }
+      task_settings: {
+        Row: {
+          created_at: string
+          id: number
+          referral_goal: number
+          referral_reward_bmh: number
+          tap_goal: number
+          tap_reward_bmh: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: number
+          referral_goal?: number
+          referral_reward_bmh?: number
+          tap_goal?: number
+          tap_reward_bmh?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: number
+          referral_goal?: number
+          referral_reward_bmh?: number
+          tap_goal?: number
+          tap_reward_bmh?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       tasks: {
         Row: {
           active_date: string
@@ -127,6 +199,7 @@ export type Database = {
           id: string
           kind: Database["public"]["Enums"]["task_kind"]
           reward_bmh: number
+          target_value: number | null
           title: string
         }
         Insert: {
@@ -137,6 +210,7 @@ export type Database = {
           id?: string
           kind: Database["public"]["Enums"]["task_kind"]
           reward_bmh: number
+          target_value?: number | null
           title: string
         }
         Update: {
@@ -147,6 +221,7 @@ export type Database = {
           id?: string
           kind?: Database["public"]["Enums"]["task_kind"]
           reward_bmh?: number
+          target_value?: number | null
           title?: string
         }
         Relationships: []

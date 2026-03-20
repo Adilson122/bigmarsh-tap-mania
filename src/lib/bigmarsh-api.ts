@@ -26,6 +26,7 @@ export type GameState = {
     reward_bmh: number;
     completed: boolean;
     claimable?: boolean;
+    target_value?: number;
     kind: "taps_500" | "invite_1";
   }>;
   referrals: Array<{
@@ -39,6 +40,13 @@ export type GameState = {
     upgrade_type: "marsh_factory" | "viral_boost" | "referral_multiplier";
     level: number;
     next_cost: number;
+  }>;
+  monetization_passes?: Array<{
+    pass_type: "weekly" | "monthly";
+    title: string;
+    duration_days: number;
+    price_usd: number;
+    benefits: string;
   }>;
   airdrop_placeholder: string;
 };
