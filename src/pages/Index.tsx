@@ -44,6 +44,9 @@ const Index = () => {
   const [state, setState] = useState<GameState | null>(null);
   const [isBootstrapping, setIsBootstrapping] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [apiStatus, setApiStatus] = useState<"online" | "degraded" | "offline">("online");
+  const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
+  const [lastLatencyMs, setLastLatencyMs] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>("tap");
   const [lbScope, setLbScope] = useState<"all_time" | "weekly" | "friends">("all_time");
   const [leaderboard, setLeaderboard] = useState<LeaderboardRow[]>([]);
@@ -55,6 +58,8 @@ const Index = () => {
   const initData = getTelegramApp()?.initData ?? "";
 
   const bootstrap = async ({ silent = false }: { silent?: boolean } = {}) => {
+    const requestStartedAt = Date.now();
+
     if (silent) {
       setIsRefreshing(true);
     } else {
@@ -72,11 +77,18 @@ const Index = () => {
         }),
         BOOT_TIMEOUT_MS,
       );
+
+      const latency = Date.now() - requestStartedAt;
       setState(data.state);
+      setApiStatus(latency > 3000 ? "degraded" : "online");
+      setLastSyncAt(new Date());
+      setLastLatencyMs(latency);
       setError(null);
       setTimedOut(false);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Erro ao iniciar o app";
+      setApiStatus("offline");
+
       if (msg === "timeout") {
         setTimedOut(true);
         setError("Conexão demorou demais.");
@@ -177,11 +189,32 @@ const Index = () => {
     return <main className="flex min-h-screen items-center justify-center text-destructive">{error ?? "Falha ao carregar"}</main>;
   }
 
+  const statusLabel = apiStatus === "online" ? "Online" : apiStatus === "degraded" ? "Lenta" : "Offline";
+  const lastSyncLabel = lastSyncAt
+    ? lastSyncAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    : "—";
+
   return (
     <main className="mx-auto min-h-screen max-w-md px-4 pb-28 pt-4">
       <header className="mb-4 rounded-2xl border border-border/70 bg-card/80 p-4 shadow-glow">
         <h1 className="text-2xl font-bold">BigMarsh - Tap to BMH</h1>
         <p className="text-sm text-muted-foreground">{state.airdrop_placeholder}</p>
+        <div className="mt-3 flex items-center justify-between rounded-xl bg-secondary/60 px-3 py-2 text-xs">
+          <div className="flex items-center gap-2">
+            <span
+              className={`h-2 w-2 rounded-full ${
+                apiStatus === "offline" ? "bg-destructive" : apiStatus === "degraded" ? "bg-muted-foreground" : "bg-primary"
+              }`}
+            />
+            <span className="text-muted-foreground">
+              API BigMarsh: <span className={apiStatus === "offline" ? "text-destructive" : "text-foreground"}>{statusLabel}</span>
+            </span>
+          </div>
+          <span className="text-muted-foreground">
+            Sync: {lastSyncLabel}
+            {lastLatencyMs !== null ? ` · ${lastLatencyMs}ms` : ""}
+          </span>
+        </div>
         {isRefreshing && <p className="mt-1 text-xs text-muted-foreground">Atualizando...</p>}
         <div className="mt-3 flex items-center justify-between text-sm">
           <span>Nível {state.user.level}</span>
