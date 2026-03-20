@@ -22,7 +22,7 @@ export type TelegramWebApp = {
 };
 
 export const getTelegramApp = (): TelegramWebApp | null => {
-  return window.Telegram?.WebApp ?? null;
+  return (window as Window & { Telegram?: { WebApp?: TelegramWebApp } }).Telegram?.WebApp ?? null;
 };
 
 export const getTelegramUser = () => {
