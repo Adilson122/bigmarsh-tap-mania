@@ -15,11 +15,12 @@ type LeaderboardRow = {
   weekly_bmh: number;
 };
 
-type TabKey = "tap" | "upgrades" | "referrals" | "leaderboard" | "tasks";
+type TabKey = "tap" | "upgrades" | "referrals" | "leaderboard" | "tasks" | "passes";
 
 const tabs: Array<{ key: TabKey; label: string; icon: typeof Zap }> = [
   { key: "tap", label: "Tap", icon: Zap },
   { key: "upgrades", label: "Upgrades", icon: ArrowUpCircle },
+  { key: "passes", label: "Passes", icon: Sparkles },
   { key: "referrals", label: "Referrals", icon: Users },
   { key: "leaderboard", label: "Leaderboard", icon: Trophy },
   { key: "tasks", label: "Tasks", icon: ListChecks },
@@ -366,6 +367,29 @@ const Index = () => {
         </section>
       )}
 
+      {activeTab === "passes" && (
+        <section className="space-y-3">
+          {(state.monetization_passes ?? []).map((pass) => (
+            <Card key={pass.pass_type} className="border-border/70 bg-card/85 p-4">
+              <div className="mb-2 flex items-center justify-between">
+                <h2 className="font-semibold">{pass.title}</h2>
+                <span className="text-sm text-primary">${Number(pass.price_usd).toFixed(2)}</span>
+              </div>
+              <p className="text-sm text-muted-foreground">Duração: {pass.duration_days} dia(s)</p>
+              <p className="mt-1 text-sm text-muted-foreground">{pass.benefits}</p>
+              <Button className="mt-3 w-full" disabled>
+                Comprar em breve
+              </Button>
+            </Card>
+          ))}
+          {(state.monetization_passes ?? []).length === 0 && (
+            <Card className="border-border/70 bg-card/85 p-4 text-sm text-muted-foreground">
+              Nenhum passe disponível no momento.
+            </Card>
+          )}
+        </section>
+      )}
+
       {activeTab === "referrals" && (
         <section className="space-y-3">
           <Card className="border-border/70 bg-card/85 p-4">
@@ -437,7 +461,7 @@ const Index = () => {
         </section>
       )}
 
-      <nav className="fixed bottom-0 left-0 right-0 z-20 mx-auto grid max-w-md grid-cols-5 gap-1 border-t border-border bg-background/95 p-2 backdrop-blur">
+      <nav className="fixed bottom-0 left-0 right-0 z-20 mx-auto grid max-w-md grid-cols-6 gap-1 border-t border-border bg-background/95 p-2 backdrop-blur">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = tab.key === activeTab;
