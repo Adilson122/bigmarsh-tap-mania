@@ -36,6 +36,14 @@ const Admin = () => {
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [panelError, setPanelError] = useState<string | null>(null);
 
+  const isLikelyFakeUser = (u: AdminUser) => {
+    const uname = (u.username ?? "").toLowerCase();
+    return u.telegram_id >= 900000 || uname.includes("ref_master") || uname.includes("new_marsh") || uname.includes("dev");
+  };
+
+  const realUsers = users.filter((u) => !isLikelyFakeUser(u));
+  const fakeUsers = users.filter((u) => isLikelyFakeUser(u));
+
   const loadPanel = async (adminToken: string) => {
     const startedAt = Date.now();
     try {
@@ -120,8 +128,9 @@ const Admin = () => {
           <Input placeholder="Buscar usuário" value={query} onChange={(e) => setQuery(e.target.value)} />
           <Button disabled={loadingAction !== null} onClick={() => loadPanel(token)}>Buscar</Button>
         </div>
+        <p className="mb-2 text-xs text-muted-foreground">Reais: {realUsers.length} · Suspeitos/Fake: {fakeUsers.length}</p>
         <div className="space-y-2">
-          {users.map((u) => (
+          {realUsers.map((u) => (
             <div key={u.telegram_id} className="grid grid-cols-6 items-center gap-2 rounded-lg bg-secondary/80 p-2 text-xs">
               <span>{u.first_name ?? u.username ?? u.telegram_id}</span>
               <Input value={u.bmh_balance} onChange={(e) => setUsers((prev) => prev.map((item) => item.telegram_id === u.telegram_id ? { ...item, bmh_balance: Number(e.target.value) } : item))} />
@@ -153,6 +162,46 @@ const Admin = () => {
               }}>{u.is_banned ? "Desbanir" : "Banir"}</Button>
             </div>
           ))}
+          {realUsers.length === 0 && <p className="text-xs text-muted-foreground">Nenhum usuário real encontrado.</p>}
+        </div>
+      </Card>
+
+      <Card className="border-border/70 bg-card/85 p-4">
+        <p className="mb-2 font-semibold">Usuários suspeitos/fake</p>
+        <div className="space-y-2">
+          {fakeUsers.map((u) => (
+            <div key={u.telegram_id} className="grid grid-cols-6 items-center gap-2 rounded-lg bg-secondary/80 p-2 text-xs">
+              <span>{u.first_name ?? u.username ?? u.telegram_id}</span>
+              <Input value={u.bmh_balance} onChange={(e) => setUsers((prev) => prev.map((item) => item.telegram_id === u.telegram_id ? { ...item, bmh_balance: Number(e.target.value) } : item))} />
+              <Input value={u.energy} onChange={(e) => setUsers((prev) => prev.map((item) => item.telegram_id === u.telegram_id ? { ...item, energy: Number(e.target.value) } : item))} />
+              <Input value={u.level} onChange={(e) => setUsers((prev) => prev.map((item) => item.telegram_id === u.telegram_id ? { ...item, level: Number(e.target.value) } : item))} />
+              <Button onClick={async () => {
+                try {
+                  setLoadingAction(`save-fake-${u.telegram_id}`);
+                  setPanelError(null);
+                  await callBigMarsh("admin_update_user", { adminToken: token, telegramId: u.telegram_id, bmh_balance: u.bmh_balance, energy: u.energy, level: u.level, is_banned: u.is_banned, initData, debugUser });
+                  await loadPanel(token);
+                } catch (e) {
+                  setPanelError(e instanceof Error ? e.message : "Erro ao salvar usuário suspeito");
+                } finally {
+                  setLoadingAction(null);
+                }
+              }}>Salvar</Button>
+              <Button variant="destructive" onClick={async () => {
+                try {
+                  setLoadingAction(`ban-fake-${u.telegram_id}`);
+                  setPanelError(null);
+                  await callBigMarsh("admin_update_user", { adminToken: token, telegramId: u.telegram_id, bmh_balance: u.bmh_balance, energy: u.energy, level: u.level, is_banned: !u.is_banned, initData, debugUser });
+                  await loadPanel(token);
+                } catch (e) {
+                  setPanelError(e instanceof Error ? e.message : "Erro ao banir/desbanir usuário suspeito");
+                } finally {
+                  setLoadingAction(null);
+                }
+              }}>{u.is_banned ? "Desbanir" : "Banir"}</Button>
+            </div>
+          ))}
+          {fakeUsers.length === 0 && <p className="text-xs text-muted-foreground">Nenhum usuário suspeito/fake detectado.</p>}
         </div>
       </Card>
 
