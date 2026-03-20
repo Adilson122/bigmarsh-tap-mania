@@ -178,8 +178,11 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown_error";
+    const status = message === "user_banned" ? 403 : 500;
+
     return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "unknown_error" }), {
-      status: 500,
+      status,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
