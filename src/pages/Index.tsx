@@ -212,6 +212,8 @@ const Index = () => {
       if (msg === "user_banned") {
         setAccountBlocked(true);
         setActionError(null);
+      } else if (msg === "insufficient_balance") {
+        setActionError("Saldo insuficiente.");
       } else {
         setActionError(msg);
       }
@@ -252,6 +254,21 @@ const Index = () => {
     } finally {
       setBusyAction(null);
     }
+  };
+
+  const handleTaskAction = async (task: GameState["tasks"][number]) => {
+    if (task.completed) return;
+    if (task.claimable) {
+      await claimTask(task.id);
+      return;
+    }
+
+    if (task.kind === "invite_1") {
+      setActiveTab("referrals");
+      return;
+    }
+
+    setActiveTab("tap");
   };
 
   if (isBootstrapping && !state) {
@@ -301,7 +318,6 @@ const Index = () => {
       <header className="mb-4 rounded-2xl border border-border/70 bg-card/80 p-4 shadow-glow">
         <h1 className="text-2xl font-bold">BigMarsh - Tap to BMH</h1>
         <p className="text-sm text-muted-foreground">{state.airdrop_placeholder}</p>
-        {isRefreshing && <p className="mt-1 text-xs text-muted-foreground">Atualizando...</p>}
         {actionError && <p className="mt-2 text-xs text-destructive">{actionError}</p>}
         <div className="mt-3 flex items-center justify-between text-sm">
           <span>Nível {state.user.level}</span>
@@ -359,6 +375,9 @@ const Index = () => {
               <Button variant="secondary" disabled={busyAction !== null} onClick={copyReferralLink}>Copiar link</Button>
               <Button disabled={busyAction !== null} onClick={shareReferralLink}>Compartilhar</Button>
             </div>
+            <Button className="mt-2 w-full" variant="outline" disabled>
+              Conectar carteira (em breve)
+            </Button>
           </Card>
           <Card className="border-border/70 bg-card/85 p-4">
             <p className="mb-2 font-semibold">Amigos indicados ({state.referrals.length})</p>
@@ -409,7 +428,9 @@ const Index = () => {
               <p className="text-sm text-muted-foreground">{task.description}</p>
               <div className="mt-3 flex items-center justify-between">
                 <span className="text-primary">+{task.reward_bmh.toLocaleString("pt-BR")} BMH</span>
-                <Button disabled={task.completed || busyAction !== null} onClick={() => claimTask(task.id)}>{task.completed ? "Concluída" : "Coletar"}</Button>
+                <Button disabled={task.completed || busyAction !== null} onClick={() => void handleTaskAction(task)}>
+                  {task.completed ? "Concluída" : task.claimable ? "Coletar" : "Fazer tarefa"}
+                </Button>
               </div>
             </Card>
           ))}
