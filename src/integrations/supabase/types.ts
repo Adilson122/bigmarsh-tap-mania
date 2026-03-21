@@ -46,6 +46,24 @@ export type Database = {
           },
         ]
       }
+      app_settings: {
+        Row: {
+          id: number
+          ton_receiver_address: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          ton_receiver_address?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          ton_receiver_address?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       monetization_passes: {
         Row: {
           benefits: string
@@ -55,6 +73,7 @@ export type Database = {
           is_enabled: boolean
           is_visible: boolean
           pass_type: string
+          price_ton: number
           price_usd: number
           sort_order: number
           title: string
@@ -68,6 +87,7 @@ export type Database = {
           is_enabled?: boolean
           is_visible?: boolean
           pass_type: string
+          price_ton?: number
           price_usd: number
           sort_order?: number
           title: string
@@ -81,12 +101,66 @@ export type Database = {
           is_enabled?: boolean
           is_visible?: boolean
           pass_type?: string
+          price_ton?: number
           price_usd?: number
           sort_order?: number
           title?: string
           updated_at?: string
         }
         Relationships: []
+      }
+      pass_purchases: {
+        Row: {
+          amount_nano: number
+          amount_ton: number
+          created_at: string
+          expires_at: string
+          id: string
+          paid_at: string | null
+          pass_type: string
+          payment_comment: string
+          recipient_address: string
+          status: Database["public"]["Enums"]["purchase_status"]
+          tx_hash: string | null
+          user_id: number
+        }
+        Insert: {
+          amount_nano: number
+          amount_ton: number
+          created_at?: string
+          expires_at?: string
+          id?: string
+          paid_at?: string | null
+          pass_type: string
+          payment_comment: string
+          recipient_address: string
+          status?: Database["public"]["Enums"]["purchase_status"]
+          tx_hash?: string | null
+          user_id: number
+        }
+        Update: {
+          amount_nano?: number
+          amount_ton?: number
+          created_at?: string
+          expires_at?: string
+          id?: string
+          paid_at?: string | null
+          pass_type?: string
+          payment_comment?: string
+          recipient_address?: string
+          status?: Database["public"]["Enums"]["purchase_status"]
+          tx_hash?: string | null
+          user_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pass_purchases_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["telegram_id"]
+          },
+        ]
       }
       referrals: {
         Row: {
@@ -258,6 +332,89 @@ export type Database = {
           },
         ]
       }
+      user_ad_slots: {
+        Row: {
+          cycle_no: number
+          kind: Database["public"]["Enums"]["task_kind"]
+          next_available_at: string
+          reward_bmh: number
+          slot_no: number
+          updated_at: string
+          user_id: number
+        }
+        Insert: {
+          cycle_no?: number
+          kind: Database["public"]["Enums"]["task_kind"]
+          next_available_at?: string
+          reward_bmh: number
+          slot_no: number
+          updated_at?: string
+          user_id: number
+        }
+        Update: {
+          cycle_no?: number
+          kind?: Database["public"]["Enums"]["task_kind"]
+          next_available_at?: string
+          reward_bmh?: number
+          slot_no?: number
+          updated_at?: string
+          user_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_ad_slots_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["telegram_id"]
+          },
+        ]
+      }
+      user_passes: {
+        Row: {
+          created_at: string
+          expires_at: string
+          id: string
+          pass_type: string
+          source_purchase_id: string | null
+          starts_at: string
+          user_id: number
+        }
+        Insert: {
+          created_at?: string
+          expires_at: string
+          id?: string
+          pass_type: string
+          source_purchase_id?: string | null
+          starts_at?: string
+          user_id: number
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          pass_type?: string
+          source_purchase_id?: string | null
+          starts_at?: string
+          user_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_passes_source_purchase_id_fkey"
+            columns: ["source_purchase_id"]
+            isOneToOne: false
+            referencedRelation: "pass_purchases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_passes_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["telegram_id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           id: string
@@ -279,6 +436,38 @@ export type Database = {
             foreignKeyName: "user_roles_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["telegram_id"]
+          },
+        ]
+      }
+      user_wallets: {
+        Row: {
+          connected_at: string
+          updated_at: string
+          user_id: number
+          wallet_address: string
+          wallet_provider: string
+        }
+        Insert: {
+          connected_at?: string
+          updated_at?: string
+          user_id: number
+          wallet_address: string
+          wallet_provider?: string
+        }
+        Update: {
+          connected_at?: string
+          updated_at?: string
+          user_id?: number
+          wallet_address?: string
+          wallet_provider?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_wallets_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
             referencedRelation: "users"
             referencedColumns: ["telegram_id"]
           },
@@ -369,6 +558,14 @@ export type Database = {
           ok: boolean
         }[]
       }
+      claim_ad_slot: {
+        Args: { _slot_no: number; _telegram_id: number }
+        Returns: {
+          new_balance: number
+          ok: boolean
+          reward: number
+        }[]
+      }
       claim_task: {
         Args: { _task_id: string; _telegram_id: number }
         Returns: {
@@ -377,14 +574,47 @@ export type Database = {
           reward: number
         }[]
       }
-      compute_regen: {
-        Args: { _energy: number; _last_energy_at: string; _max_energy: number }
-        Returns: {
-          new_energy: number
-          new_last_energy_at: string
-        }[]
+      compute_regen:
+        | {
+            Args: {
+              _energy: number
+              _last_energy_at: string
+              _max_energy: number
+            }
+            Returns: {
+              new_energy: number
+              new_last_energy_at: string
+            }[]
+          }
+        | {
+            Args: {
+              _energy: number
+              _last_energy_at: string
+              _max_energy: number
+              _regen_interval_seconds?: number
+            }
+            Returns: {
+              new_energy: number
+              new_last_energy_at: string
+            }[]
+          }
+      confirm_pass_checkout: {
+        Args: { _purchase_id: string; _telegram_id: number; _tx_hash?: string }
+        Returns: Json
+      }
+      connect_user_wallet: {
+        Args: { _telegram_id: number; _wallet_address: string }
+        Returns: string
+      }
+      create_pass_checkout: {
+        Args: { _pass_type: string; _telegram_id: number }
+        Returns: Json
       }
       ensure_daily_tasks: { Args: never; Returns: undefined }
+      ensure_user_ad_slots: {
+        Args: { _telegram_id: number }
+        Returns: undefined
+      }
       get_admin_stats: { Args: never; Returns: Json }
       get_leaderboard: {
         Args: { _scope?: string; _telegram_id: number }
@@ -399,6 +629,14 @@ export type Database = {
         }[]
       }
       get_state: { Args: { _telegram_id: number }; Returns: Json }
+      get_user_pass_effects: {
+        Args: { _telegram_id: number }
+        Returns: {
+          referral_bonus_multiplier: number
+          regen_interval_seconds: number
+          reward_multiplier: number
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -458,6 +696,7 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "moderator" | "user"
+      purchase_status: "pending" | "paid" | "expired" | "failed"
       task_kind:
         | "taps_500"
         | "invite_1"
@@ -592,6 +831,7 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "moderator", "user"],
+      purchase_status: ["pending", "paid", "expired", "failed"],
       task_kind: ["taps_500", "invite_1", "watch_ad", "ad_watch", "link_visit"],
     },
   },
