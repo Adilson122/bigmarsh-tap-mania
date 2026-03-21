@@ -526,7 +526,7 @@ const Index = () => {
               <Button variant="secondary" disabled={busyAction !== null} onClick={copyReferralLink}>Copiar link</Button>
               <Button disabled={busyAction !== null} onClick={shareReferralLink}>Compartilhar</Button>
             </div>
-            <Button className="mt-2 w-full" variant="outline" disabled>
+            <Button className="mt-2 w-full" variant="outline" disabled={busyAction !== null} onClick={connectWallet}>
               Conectar carteira
             </Button>
           </Card>
