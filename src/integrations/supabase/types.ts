@@ -198,6 +198,7 @@ export type Database = {
           description: string | null
           id: string
           kind: Database["public"]["Enums"]["task_kind"]
+          link_url: string | null
           reward_bmh: number
           target_value: number | null
           title: string
@@ -209,6 +210,7 @@ export type Database = {
           description?: string | null
           id?: string
           kind: Database["public"]["Enums"]["task_kind"]
+          link_url?: string | null
           reward_bmh: number
           target_value?: number | null
           title: string
@@ -220,6 +222,7 @@ export type Database = {
           description?: string | null
           id?: string
           kind?: Database["public"]["Enums"]["task_kind"]
+          link_url?: string | null
           reward_bmh?: number
           target_value?: number | null
           title?: string
@@ -455,7 +458,12 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "moderator" | "user"
-      task_kind: "taps_500" | "invite_1" | "watch_ad" | "ad_watch"
+      task_kind:
+        | "taps_500"
+        | "invite_1"
+        | "watch_ad"
+        | "ad_watch"
+        | "link_visit"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -584,7 +592,7 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "moderator", "user"],
-      task_kind: ["taps_500", "invite_1", "watch_ad", "ad_watch"],
+      task_kind: ["taps_500", "invite_1", "watch_ad", "ad_watch", "link_visit"],
     },
   },
 } as const
