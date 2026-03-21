@@ -18,6 +18,7 @@ export type GameState = {
     total_taps: number;
     next_regen_in: number;
     referral_link: string;
+    wallet_address?: string | null;
   };
   tasks: Array<{
     id: string;
@@ -47,7 +48,12 @@ export type GameState = {
     title: string;
     duration_days: number;
     price_usd: number;
+    price_ton?: number;
     benefits: string;
+  }>;
+  active_passes?: Array<{
+    pass_type: "weekly" | "monthly";
+    expires_at: string;
   }>;
   airdrop_placeholder: string;
 };
