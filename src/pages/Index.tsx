@@ -217,6 +217,8 @@ const messages: Record<Locale, Record<string, string>> = {
     copyError: "Could not copy link now.",
     shareError: "Could not share right now.",
     loadingAdHint: "Ads are provided by Monetag and may vary by region.",
+    openTelegramWallet: "Open Telegram Wallet",
+    airdropPlaceholder: "Airdrop BMH coming soon for active players",
     excitingShare: "🚀 I just started farming BMH on BigMarsh! Fast taps, ad boosts, weekly missions and TON passes. Join me now and claim your starter bonus!",
   },
   pt: {
@@ -299,6 +301,8 @@ const messages: Record<Locale, Record<string, string>> = {
     copyError: "Não foi possível copiar o link agora.",
     shareError: "Não foi possível compartilhar agora.",
     loadingAdHint: "Os anúncios são fornecidos pela Monetag e podem variar por região.",
+    openTelegramWallet: "Abrir Telegram Wallet",
+    airdropPlaceholder: "Airdrop BMH em breve para jogadores ativos",
     excitingShare: "🚀 Entrei no BigMarsh e já estou farmando BMH! Tap rápido, boost por anúncios, missões semanais e passes TON. Entra comigo agora e pega seu bônus inicial!",
   },
   es: {
@@ -381,6 +385,8 @@ const messages: Record<Locale, Record<string, string>> = {
     copyError: "No se pudo copiar el enlace ahora.",
     shareError: "No se pudo compartir ahora.",
     loadingAdHint: "Los anuncios son provistos por Monetag y pueden variar por región.",
+    openTelegramWallet: "Abrir Telegram Wallet",
+    airdropPlaceholder: "Airdrop de BMH muy pronto para jugadores activos",
     excitingShare: "🚀 ¡Ya empecé a farmear BMH en BigMarsh! Taps rápidos, boosts de anuncios, misiones semanales y pases TON. ¡Únete ahora y reclama tu bono inicial!",
   },
 };
@@ -826,6 +832,38 @@ const Index = () => {
     setActiveTab("tap");
   };
 
+  const localizeTask = (task: GameState["tasks"][number]) => {
+    const target = Number(task.target_value ?? 1);
+    const localeMap: Record<Locale, Record<string, { title: string; description: string }>> = {
+      en: {
+        taps_500: { title: `Do ${target} taps today`, description: `Tap ${target} times today.` },
+        invite_1: { title: `Invite ${target} friend(s)`, description: `Invite at least ${target} friend(s) today.` },
+        weekly_bmh: { title: "Weekly Mission: Earn BMH", description: `Earn ${target.toLocaleString("en-US")} BMH this week.` },
+        weekly_invite: { title: "Weekly Mission: Invite friends", description: `Invite ${target} new friends this week.` },
+      },
+      pt: {
+        taps_500: { title: `Faça ${target} taps hoje`, description: `Toque ${target} vezes hoje.` },
+        invite_1: { title: `Convide ${target} amigo(s)`, description: `Convide pelo menos ${target} amigo(s) hoje.` },
+        weekly_bmh: { title: "Missão semanal: Ganhe BMH", description: `Ganhe ${target.toLocaleString("pt-BR")} BMH nesta semana.` },
+        weekly_invite: { title: "Missão semanal: Convide amigos", description: `Convide ${target} novos amigos nesta semana.` },
+      },
+      es: {
+        taps_500: { title: `Haz ${target} taps hoy`, description: `Haz ${target} taps hoy.` },
+        invite_1: { title: `Invita a ${target} amigo(s)`, description: `Invita al menos a ${target} amigo(s) hoy.` },
+        weekly_bmh: { title: "Misión semanal: Gana BMH", description: `Gana ${target.toLocaleString("es-ES")} BMH esta semana.` },
+        weekly_invite: { title: "Misión semanal: Invita amigos", description: `Invita a ${target} amigos nuevos esta semana.` },
+      },
+    };
+
+    const resolved = localeMap[locale][task.kind];
+    if (resolved) return resolved;
+
+    return {
+      title: task.title,
+      description: task.description ?? (isAdTask(task) ? copy.tasksAutoRefresh : ""),
+    };
+  };
+
   if (isBootstrapping && !state) {
     return (
       <main className="flex min-h-screen items-center justify-center px-6">
@@ -870,7 +908,7 @@ const Index = () => {
     <main className="mx-auto min-h-screen max-w-md px-4 pb-28 pt-4">
       <header className="mb-4 rounded-2xl border border-border/70 bg-card/80 p-4 shadow-glow">
         <h1 className="text-2xl font-bold">{copy.appTitle}</h1>
-        <p className="text-sm text-muted-foreground">{state.airdrop_placeholder}</p>
+        <p className="text-sm text-muted-foreground">{copy.airdropPlaceholder || state.airdrop_placeholder}</p>
         <div className="mt-2 flex items-center gap-2">
           {(["en", "pt", "es"] as const).map((lang) => (
             <Button
@@ -964,6 +1002,18 @@ const Index = () => {
             />
             <Button className="w-full" variant="outline" disabled={busyAction !== null} onClick={() => void connectWallet()}>
               {state.user.wallet_address ? copy.updateWallet : copy.connectWallet}
+            </Button>
+            <Button
+              className="mt-2 w-full"
+              variant="secondary"
+              disabled={busyAction !== null}
+              onClick={() => {
+                const tg = getTelegramApp();
+                if (tg?.openTelegramLink) tg.openTelegramLink("https://t.me/wallet");
+                else window.open("https://t.me/wallet", "_blank", "noopener,noreferrer");
+              }}
+            >
+              {copy.openTelegramWallet}
             </Button>
             {state.user.wallet_address && <p className="mt-2 break-all text-xs text-muted-foreground">{copy.linkedWallet}: {state.user.wallet_address}</p>}
           </Card>
@@ -1073,8 +1123,8 @@ const Index = () => {
         <section className="space-y-3">
           {state.tasks.map((task) => (
             <Card key={task.id} className="border-border/70 bg-card/85 p-4">
-              <h2 className="font-semibold">{task.title}</h2>
-              <p className="text-sm text-muted-foreground">{task.description}</p>
+              <h2 className="font-semibold">{localizeTask(task).title}</h2>
+              <p className="text-sm text-muted-foreground">{localizeTask(task).description}</p>
               {task.kind === "link_visit" && task.link_url && (
                 <p className="mt-1 break-all text-xs text-muted-foreground">{copy.taskDestination}: {task.link_url}</p>
               )}
