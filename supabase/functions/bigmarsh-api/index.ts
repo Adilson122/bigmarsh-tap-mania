@@ -8,7 +8,7 @@ const corsHeaders = {
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN")!;
-const botUsername = Deno.env.get("BIGMARSH_BOT_USERNAME") ?? "Bigmarsh_bot";
+const botUsername = Deno.env.get("BIGMARSH_BOT_USERNAME") ?? "bigmarsh_bot";
 
 const ADMIN_USERNAME = Deno.env.get("BIGMARSH_ADMIN_USERNAME") ?? "admin";
 const ADMIN_PASSWORD = Deno.env.get("BIGMARSH_ADMIN_PASSWORD") ?? "";
@@ -51,7 +51,7 @@ const normalizeState = async (state: any, telegramId: number) => {
     ...state,
     user: {
       ...state.user,
-      referral_link: `https://t.me/${botUsername}?startapp=${telegramId}`,
+      referral_link: `https://t.me/${botUsername}?start=ref_${telegramId}`,
     },
     monetization_passes: monetizationPasses,
     tasks: Array.isArray(state.tasks)
@@ -120,7 +120,13 @@ const hmac = async (keyRaw: string | Uint8Array, value: string) => {
 
 async function verifyInitData(initData?: string, debugUser?: any) {
   if (!initData && debugUser?.id) {
-    return { id: Number(debugUser.id), username: debugUser.username, first_name: debugUser.first_name, photo_url: debugUser.photo_url };
+    return {
+      id: Number(debugUser.id),
+      username: debugUser.username,
+      first_name: debugUser.first_name,
+      photo_url: debugUser.photo_url,
+      __is_debug: true,
+    };
   }
 
   if (!initData) throw new Error("init_data_missing");
@@ -175,6 +181,11 @@ Deno.serve(async (req) => {
           _avatar_url: tgUser.photo_url ?? null,
           _start_param: body.startParam ?? null,
         });
+
+        await db
+          .from("users")
+          .update({ is_fake: Boolean((tgUser as { __is_debug?: boolean }).__is_debug) })
+          .eq("telegram_id", telegramId);
 
         const { data: pendingReferral } = await db
           .from("referrals")
@@ -314,15 +325,35 @@ Deno.serve(async (req) => {
         const target = Math.max(TASK_TARGET_MIN, Math.min(TASK_TARGET_MAX, Number(body.targetValue ?? defaultTarget)));
         const normalizedLink = kind === "link_visit" ? String(body.linkUrl ?? "").trim() || null : null;
 
-        await db.from("tasks").upsert({
-          title: body.title,
+        const activeDate = new Date().toISOString().slice(0, 10);
+        const payload = {
+          title: String(body.title ?? "Task"),
           reward_bmh: reward,
           description: body.description ?? null,
           kind,
           target_value: target,
           link_url: normalizedLink,
-          active_date: new Date().toISOString().slice(0, 10),
-        }, { onConflict: "kind,active_date" });
+          active_date: activeDate,
+        };
+
+        const { data: existingTask, error: existingTaskError } = await db
+          .from("tasks")
+          .select("id")
+          .eq("kind", kind)
+          .eq("active_date", activeDate)
+          .order("created_at", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+
+        if (existingTaskError) throw new Error(existingTaskError.message);
+
+        if (existingTask?.id) {
+          const { error: updateTaskError } = await db.from("tasks").update(payload).eq("id", existingTask.id);
+          if (updateTaskError) throw new Error(updateTaskError.message);
+        } else {
+          const { error: insertTaskError } = await db.from("tasks").insert(payload);
+          if (insertTaskError) throw new Error(insertTaskError.message);
+        }
         return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
@@ -379,13 +410,13 @@ Deno.serve(async (req) => {
           db.from("referrals").select("id,referrer_id,referred_id,created_at").order("created_at", { ascending: false }).limit(100),
           db.from("users").select("telegram_id,daily_streak,referrals_count").or("daily_streak.gt.7,referrals_count.gt.5").limit(500),
           db.from("users").select("telegram_id", { count: "exact", head: true }),
-          db.from("users").select("telegram_id", { count: "exact", head: true }).or("telegram_id.gte.900000,username.ilike.%ref_master%,username.ilike.%new_marsh%,username.ilike.%dev%"),
+          db.from("users").select("telegram_id", { count: "exact", head: true }).eq("is_fake", true),
           db.from("monetization_passes").select("pass_type,title,duration_days,price_usd,price_ton,benefits,is_visible,is_enabled,sort_order").order("sort_order", { ascending: true }),
           db.from("task_settings").select("referral_goal,referral_reward_bmh,tap_goal,tap_reward_bmh").eq("id", 1).maybeSingle(),
           db.from("app_settings").select("ton_receiver_address").eq("id", 1).maybeSingle(),
         ]);
 
-        let usersQuery = db.from("users").select("telegram_id,username,first_name,bmh_balance,energy,level,daily_streak,referrals_count,is_banned").order("created_at", { ascending: false }).limit(100);
+        let usersQuery = db.from("users").select("telegram_id,username,first_name,bmh_balance,energy,level,daily_streak,referrals_count,is_banned,is_fake").order("created_at", { ascending: false }).limit(100);
         if (query.trim()) {
           usersQuery = usersQuery.or(`username.ilike.%${query}%,first_name.ilike.%${query}%`);
         }

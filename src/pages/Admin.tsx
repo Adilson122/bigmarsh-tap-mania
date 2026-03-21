@@ -15,6 +15,7 @@ type AdminUser = {
   daily_streak: number;
   referrals_count: number;
   is_banned: boolean;
+  is_fake?: boolean;
 };
 
 type AdminStats = {
@@ -94,10 +95,7 @@ const Admin = () => {
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [panelError, setPanelError] = useState<string | null>(null);
 
-  const isLikelyFakeUser = (u: AdminUser) => {
-    const uname = (u.username ?? "").toLowerCase();
-    return u.telegram_id >= 900000 || uname.includes("ref_master") || uname.includes("new_marsh") || uname.includes("dev");
-  };
+  const isLikelyFakeUser = (u: AdminUser) => Boolean(u.is_fake);
 
   const realUsers = users.filter((u) => !isLikelyFakeUser(u));
   const fakeUsers = users.filter((u) => isLikelyFakeUser(u));
