@@ -46,6 +46,19 @@ const isAdTask = (task: GameState["tasks"][number]) => {
   return kind === "watch_ad" || kind === "ad_watch";
 };
 
+type MonetagShow = (
+  mode?: "pop" | {
+    type: "inApp";
+    inAppSettings: {
+      frequency: number;
+      capping: number;
+      interval: number;
+      timeout: number;
+      everyPage: boolean;
+    };
+  },
+) => Promise<unknown>;
+
 const Index = () => {
   const [state, setState] = useState<GameState | null>(null);
   const [isBootstrapping, setIsBootstrapping] = useState(true);
@@ -138,6 +151,22 @@ const Index = () => {
   useEffect(() => {
     setupTelegram();
     bootstrap({ silent: false });
+  }, []);
+
+  useEffect(() => {
+    const monetagSdk = (window as Window & { show_10755955?: MonetagShow }).show_10755955;
+    if (!monetagSdk) return;
+
+    void monetagSdk({
+      type: "inApp",
+      inAppSettings: {
+        frequency: 2,
+        capping: 0.1,
+        interval: 30,
+        timeout: 5,
+        everyPage: false,
+      },
+    });
   }, []);
 
   useEffect(() => {
@@ -266,7 +295,7 @@ const Index = () => {
     if (task.completed) return;
 
     if (isAdTask(task) && !task.claimable) {
-      const monetagSdk = (window as Window & { show_10755955?: () => Promise<unknown> }).show_10755955;
+      const monetagSdk = (window as Window & { show_10755955?: MonetagShow }).show_10755955;
       if (!monetagSdk) {
         setActionError("Anúncio indisponível no momento.");
         return;
@@ -276,7 +305,11 @@ const Index = () => {
         setBusyAction("task");
         setActionError(null);
 
-        await monetagSdk();
+        if (task.kind === "ad_watch") {
+          await monetagSdk("pop");
+        } else {
+          await monetagSdk();
+        }
         await claimTask(task.id);
       } catch {
         setActionError("Não foi possível carregar o anúncio agora.");
