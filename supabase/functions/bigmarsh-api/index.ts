@@ -12,6 +12,11 @@ const botUsername = Deno.env.get("BIGMARSH_BOT_USERNAME") ?? "Bigmarsh_bot";
 
 const ADMIN_USERNAME = Deno.env.get("BIGMARSH_ADMIN_USERNAME") ?? "admin";
 const ADMIN_PASSWORD = Deno.env.get("BIGMARSH_ADMIN_PASSWORD") ?? "";
+const TASK_REWARD_MIN = 50;
+const TASK_REWARD_MAX = 2000;
+const TASK_TARGET_MIN = 1;
+const TASK_TARGET_MAX = 2500;
+const MANUAL_TASK_KINDS = new Set(["taps_500", "invite_1", "link_visit"]);
 
 const db = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
 
@@ -194,25 +199,38 @@ Deno.serve(async (req) => {
       }
 
       if (action === "admin_create_task") {
+        const kind = String(body.kind ?? "taps_500");
+        if (!MANUAL_TASK_KINDS.has(kind)) throw new Error("manual_task_kind_not_allowed");
+
+        const reward = Math.max(TASK_REWARD_MIN, Math.min(TASK_REWARD_MAX, Number(body.reward_bmh ?? 0)));
+        const defaultTarget = kind === "invite_1" || kind === "link_visit" ? 1 : 300;
+        const target = Math.max(TASK_TARGET_MIN, Math.min(TASK_TARGET_MAX, Number(body.targetValue ?? defaultTarget)));
+        const normalizedLink = kind === "link_visit" ? String(body.linkUrl ?? "").trim() || null : null;
+
         await db.from("tasks").upsert({
           title: body.title,
-          reward_bmh: Number(body.reward_bmh ?? 0),
+          reward_bmh: reward,
           description: body.description ?? null,
-          kind: body.kind ?? "taps_500",
-          target_value: Math.max(1, Number(body.targetValue ?? (body.kind === "invite_1" || body.kind === "link_visit" ? 1 : 500))),
-          link_url: body.kind === "link_visit" ? String(body.linkUrl ?? "").trim() || null : null,
+          kind,
+          target_value: target,
+          link_url: normalizedLink,
           active_date: new Date().toISOString().slice(0, 10),
         }, { onConflict: "kind,active_date" });
         return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
       if (action === "admin_save_task_settings") {
+        const referralGoal = Math.max(1, Math.min(25, Number(body.referral_goal ?? 1)));
+        const referralReward = Math.max(180, Math.min(1800, Number(body.referral_reward_bmh ?? 500)));
+        const tapGoal = Math.max(100, Math.min(1500, Number(body.tap_goal ?? 300)));
+        const tapReward = Math.max(120, Math.min(1200, Number(body.tap_reward_bmh ?? 350)));
+
         await db.from("task_settings").upsert({
           id: 1,
-          referral_goal: Math.max(1, Number(body.referral_goal ?? 1)),
-          referral_reward_bmh: Math.max(0, Number(body.referral_reward_bmh ?? 0)),
-          tap_goal: Math.max(1, Number(body.tap_goal ?? 1)),
-          tap_reward_bmh: Math.max(0, Number(body.tap_reward_bmh ?? 0)),
+          referral_goal: referralGoal,
+          referral_reward_bmh: referralReward,
+          tap_goal: tapGoal,
+          tap_reward_bmh: tapReward,
         }, { onConflict: "id" });
 
         await db.rpc("ensure_daily_tasks");

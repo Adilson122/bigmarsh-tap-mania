@@ -1,12 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { Trophy, Zap, Users, ListChecks, ArrowUpCircle, Sparkles } from "lucide-react";
+import { Trophy, Zap, Users, ListChecks, ArrowUpCircle, Sparkles, Wallet } from "lucide-react";
 import { callBigMarsh, type GameState } from "@/lib/bigmarsh-api";
 import { getStartParam, getTelegramApp, getTelegramUser, setupTelegram } from "@/lib/telegram";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import adTaskInterstitialImg from "@/assets/ads/ad-task-interstitial.jpg";
-import adTaskRewardImg from "@/assets/ads/ad-task-reward.jpg";
-import adTaskGenericImg from "@/assets/ads/ad-task-generic.jpg";
 
 type LeaderboardRow = {
   rank_no: number;
@@ -49,23 +46,49 @@ const isAdTask = (task: GameState["tasks"][number]) => {
   return kind === "watch_ad" || kind === "ad_watch";
 };
 
-const adTaskImageByKind: Partial<Record<GameState["tasks"][number]["kind"], string>> = {
-  watch_ad: adTaskInterstitialImg,
-  ad_watch: adTaskRewardImg,
+type MonetagShow = () => Promise<unknown>;
+
+const MONETAG_SCRIPT_ID = "bigmarsh-monetag-sdk";
+const MONETAG_SCRIPT_SRC = "https://libtl.com/sdk.js";
+
+const loadMonetagSdk = async (): Promise<MonetagShow | null> => {
+  const win = window as Window & { show_10755955?: MonetagShow };
+  if (typeof win.show_10755955 === "function") {
+    return win.show_10755955;
+  }
+
+  const existingScript = document.getElementById(MONETAG_SCRIPT_ID) as HTMLScriptElement | null;
+  if (!existingScript) {
+    const script = document.createElement("script");
+    script.id = MONETAG_SCRIPT_ID;
+    script.src = MONETAG_SCRIPT_SRC;
+    script.dataset.zone = "10755955";
+    script.dataset.sdk = "show_10755955";
+    script.async = true;
+    document.head.appendChild(script);
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => reject(new Error("ads_load_timeout")), 7000);
+    const poll = window.setInterval(() => {
+      if (typeof win.show_10755955 === "function") {
+        window.clearInterval(poll);
+        window.clearTimeout(timeoutId);
+        resolve();
+      }
+    }, 120);
+  }).catch(() => undefined);
+
+  return typeof win.show_10755955 === "function" ? win.show_10755955 : null;
 };
 
-type MonetagShow = (
-  mode?: "pop" | {
-    type: "inApp";
-    inAppSettings: {
-      frequency: number;
-      capping: number;
-      interval: number;
-      timeout: number;
-      everyPage: boolean;
-    };
-  },
-) => Promise<unknown>;
+const upgradeMeta: Record<GameState["upgrades"][number]["upgrade_type"], { title: string; description: string }> = {
+  marsh_factory: { title: "Marsh Factory", description: "Aumenta o ganho base por tap." },
+  viral_boost: { title: "Viral Boost", description: "Aumenta levemente o multiplicador de combo." },
+  referral_multiplier: { title: "Referral Multiplier", description: "Melhora o bônus recebido por indicação ativa." },
+  energy_core: { title: "Energy Core", description: "Eleva o limite de energia máxima para jogar mais tempo." },
+  precision_tap: { title: "Precision Tap", description: "Aumenta precisão do tap e ganho total por ação." },
+};
 
 const Index = () => {
   const [state, setState] = useState<GameState | null>(null);
@@ -80,7 +103,7 @@ const Index = () => {
   const [tapFx, setTapFx] = useState<Array<{ id: number; value: number; x: number }>>([]);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [busyAction, setBusyAction] = useState<"tap" | "upgrade" | "task" | "referral_copy" | "referral_share" | null>(null);
+  const [busyAction, setBusyAction] = useState<"tap" | "upgrade" | "task" | "referral_copy" | "referral_share" | "wallet" | null>(null);
   const [timedOut, setTimedOut] = useState(false);
   const [accountBlocked, setAccountBlocked] = useState(false);
 
@@ -283,11 +306,35 @@ const Index = () => {
     }
   };
 
+  const connectWallet = () => {
+    const tg = getTelegramApp();
+    if (!tg) {
+      setActionError("Conexão de wallet disponível apenas dentro do Telegram.");
+      return;
+    }
+
+    try {
+      setBusyAction("wallet");
+      setActionError(null);
+      if (typeof tg.openTelegramLink === "function") {
+        tg.openTelegramLink("https://t.me/wallet");
+      } else if (typeof tg.openLink === "function") {
+        tg.openLink("https://t.me/wallet", { try_instant_view: false });
+      } else {
+        window.open("https://t.me/wallet", "_blank", "noopener,noreferrer");
+      }
+    } catch {
+      setActionError("Não foi possível abrir a wallet agora.");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
   const handleTaskAction = async (task: GameState["tasks"][number]) => {
     if (task.completed) return;
 
     if (isAdTask(task) && !task.claimable) {
-      const monetagSdk = (window as Window & { show_10755955?: MonetagShow }).show_10755955;
+      const monetagSdk = await loadMonetagSdk();
       if (!monetagSdk) {
         setActionError("Anúncio indisponível no momento.");
         return;
@@ -423,9 +470,10 @@ const Index = () => {
           {state.upgrades.map((u) => (
             <Card key={u.upgrade_type} className="border-border/70 bg-card/85 p-4">
               <div className="mb-2 flex items-center justify-between">
-                <h2 className="font-semibold capitalize">{u.upgrade_type.replace("_", " ")}</h2>
+                <h2 className="font-semibold">{upgradeMeta[u.upgrade_type]?.title ?? u.upgrade_type.replace("_", " ")}</h2>
                 <span className="text-sm text-primary">Lv {u.level}</span>
               </div>
+              <p className="mb-3 text-xs text-muted-foreground">{upgradeMeta[u.upgrade_type]?.description ?? "Upgrade de progressão."}</p>
               <Button className="w-full" disabled={busyAction !== null} onClick={() => buyUpgrade(u.upgrade_type)}>
                 Comprar ({u.next_cost.toLocaleString("pt-BR")} BMH)
               </Button>
@@ -436,6 +484,18 @@ const Index = () => {
 
       {activeTab === "passes" && (
         <section className="space-y-3">
+          <Card className="border-border/70 bg-card/85 p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <h2 className="font-semibold">Conectar Wallet</h2>
+                <p className="text-xs text-muted-foreground">Necessário para agilizar compras de passe.</p>
+              </div>
+              <Wallet className="h-5 w-5 text-primary" />
+            </div>
+            <Button className="w-full" variant="outline" disabled={busyAction !== null} onClick={connectWallet}>
+              Abrir Wallet no Telegram
+            </Button>
+          </Card>
           {(state.monetization_passes ?? []).map((pass) => (
             <Card key={pass.pass_type} className="border-border/70 bg-card/85 p-4">
               <div className="mb-2 flex items-center justify-between">
@@ -466,8 +526,8 @@ const Index = () => {
               <Button variant="secondary" disabled={busyAction !== null} onClick={copyReferralLink}>Copiar link</Button>
               <Button disabled={busyAction !== null} onClick={shareReferralLink}>Compartilhar</Button>
             </div>
-            <Button className="mt-2 w-full" variant="outline" disabled>
-              Conectar carteira (em breve)
+            <Button className="mt-2 w-full" variant="outline" disabled={busyAction !== null} onClick={connectWallet}>
+              Conectar carteira
             </Button>
           </Card>
           <Card className="border-border/70 bg-card/85 p-4">
@@ -515,16 +575,6 @@ const Index = () => {
         <section className="space-y-3">
           {state.tasks.map((task) => (
             <Card key={task.id} className="border-border/70 bg-card/85 p-4">
-              {isAdTask(task) && (
-                <div className="mb-3 overflow-hidden rounded-xl border border-border/70 bg-secondary/40">
-                  <img
-                    src={adTaskImageByKind[task.kind] ?? adTaskGenericImg}
-                    alt={`Imagem promocional da tarefa ${task.title}`}
-                    className="h-32 w-full object-cover"
-                    loading="lazy"
-                  />
-                </div>
-              )}
               <h2 className="font-semibold">{task.title}</h2>
               <p className="text-sm text-muted-foreground">{task.description}</p>
               {task.kind === "link_visit" && task.link_url && (
