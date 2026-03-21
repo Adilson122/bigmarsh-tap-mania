@@ -8,7 +8,7 @@ const corsHeaders = {
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN")!;
-const botUsername = Deno.env.get("BIGMARSH_BOT_USERNAME") ?? "Bigmarsh_bot";
+const botUsername = Deno.env.get("BIGMARSH_BOT_USERNAME") ?? "bigmarsh_bot";
 
 const ADMIN_USERNAME = Deno.env.get("BIGMARSH_ADMIN_USERNAME") ?? "admin";
 const ADMIN_PASSWORD = Deno.env.get("BIGMARSH_ADMIN_PASSWORD") ?? "";
@@ -51,7 +51,7 @@ const normalizeState = async (state: any, telegramId: number) => {
     ...state,
     user: {
       ...state.user,
-      referral_link: `https://t.me/${botUsername}?startapp=${telegramId}`,
+      referral_link: `https://t.me/${botUsername}?start=ref_${telegramId}`,
     },
     monetization_passes: monetizationPasses,
     tasks: Array.isArray(state.tasks)
@@ -120,7 +120,13 @@ const hmac = async (keyRaw: string | Uint8Array, value: string) => {
 
 async function verifyInitData(initData?: string, debugUser?: any) {
   if (!initData && debugUser?.id) {
-    return { id: Number(debugUser.id), username: debugUser.username, first_name: debugUser.first_name, photo_url: debugUser.photo_url };
+    return {
+      id: Number(debugUser.id),
+      username: debugUser.username,
+      first_name: debugUser.first_name,
+      photo_url: debugUser.photo_url,
+      __is_debug: true,
+    };
   }
 
   if (!initData) throw new Error("init_data_missing");
