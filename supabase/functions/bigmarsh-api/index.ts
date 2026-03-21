@@ -73,6 +73,24 @@ const normalizeState = async (state: any, telegramId: number) => {
 
 const toHex = (arr: ArrayBuffer) => [...new Uint8Array(arr)].map((b) => b.toString(16).padStart(2, "0")).join("");
 
+const sendTelegramMessage = async (chatId: number, text: string) => {
+  const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      text,
+      parse_mode: "HTML",
+      disable_web_page_preview: true,
+    }),
+  });
+
+  if (!response.ok) {
+    const payload = await response.text();
+    throw new Error(`telegram_send_failed:${response.status}:${payload}`);
+  }
+};
+
 const hmac = async (keyRaw: string | Uint8Array, value: string) => {
   const keyData = typeof keyRaw === "string" ? new TextEncoder().encode(keyRaw) : keyRaw;
   const cryptoKey = await crypto.subtle.importKey("raw", keyData, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
@@ -136,6 +154,27 @@ Deno.serve(async (req) => {
           _avatar_url: tgUser.photo_url ?? null,
           _start_param: body.startParam ?? null,
         });
+
+        const { data: pendingReferral } = await db
+          .from("referrals")
+          .select("id, referrer_id")
+          .eq("referred_id", telegramId)
+          .is("notified_at", null)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (pendingReferral?.referrer_id) {
+          const inviterName = tgUser.first_name ?? tgUser.username ?? `#${telegramId}`;
+          const congratulations = `🎉 <b>Parabéns!</b>\nVocê acabou de convidar <b>${inviterName}</b> para o BigMarsh!\nContinue convidando para subir no ranking e ganhar ainda mais BMH.`;
+
+          try {
+            await sendTelegramMessage(Number(pendingReferral.referrer_id), congratulations);
+            await db.from("referrals").update({ notified_at: new Date().toISOString() }).eq("id", pendingReferral.id);
+          } catch (notifyError) {
+            console.error("referral_notification_failed", notifyError);
+          }
+        }
 
         await db.rpc("ensure_daily_tasks");
 
