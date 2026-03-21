@@ -93,6 +93,21 @@ const loadMonetagSdk = async (): Promise<MonetagShow | null> => {
   return typeof win.show_10755955 === "function" ? win.show_10755955 : null;
 };
 
+const normalizeWalletAddressInput = (value: string) => {
+  let normalized = value.trim();
+  if (!normalized) return "";
+
+  normalized = normalized.replace(/^ton:\/\/transfer\//i, "");
+  normalized = normalized.replace(/^https?:\/\/(?:app\.)?tonkeeper\.com\/transfer\//i, "");
+  normalized = normalized.replace(/^https?:\/\/tonhub\.com\/transfer\//i, "");
+
+  if (normalized.includes("?")) {
+    normalized = normalized.split("?")[0] ?? normalized;
+  }
+
+  return normalized.trim();
+};
+
 const upgradeMeta: Record<GameState["upgrades"][number]["upgrade_type"], { title: string; description: Record<Locale, string> }> = {
   marsh_factory: {
     title: "Marsh Factory",
@@ -664,7 +679,7 @@ const Index = () => {
   };
 
   const connectWallet = async () => {
-    const address = walletInput.trim();
+    const address = normalizeWalletAddressInput(walletInput);
     if (!address) {
       setActionError(copy.walletRequired);
       return;
@@ -678,6 +693,7 @@ const Index = () => {
         walletAddress: address,
         debugUser: telegramUser ?? { id: 777001, first_name: "Dev", username: "bigmarsh_dev" },
       });
+      setWalletInput(address);
       await bootstrap({ silent: true });
     } catch (e) {
       const msg = e instanceof Error ? e.message : copy.walletConnectError;
@@ -806,11 +822,6 @@ const Index = () => {
       return;
     }
 
-    if (task.claimable) {
-      await claimTask(task.id);
-      return;
-    }
-
     if (task.kind === "link_visit") {
       const rawUrl = String(task.link_url ?? "").trim();
       if (!rawUrl) {
@@ -819,7 +830,22 @@ const Index = () => {
       }
 
       const taskUrl = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
-      window.open(taskUrl, "_blank", "noopener,noreferrer");
+      const tg = getTelegramApp();
+      const isTelegramDeepLink = /^(https?:\/\/)?(t\.me|telegram\.me)\//i.test(taskUrl);
+
+      if (isTelegramDeepLink && tg?.openTelegramLink) {
+        tg.openTelegramLink(taskUrl);
+      } else if (tg?.openLink) {
+        tg.openLink(taskUrl, { try_instant_view: true });
+      } else {
+        window.open(taskUrl, "_blank", "noopener,noreferrer");
+      }
+
+      await claimTask(task.id);
+      return;
+    }
+
+    if (task.claimable) {
       await claimTask(task.id);
       return;
     }
@@ -1121,7 +1147,7 @@ const Index = () => {
 
       {activeTab === "tasks" && (
         <section className="space-y-3">
-          {state.tasks.map((task) => (
+          {state.tasks.filter((task) => !isAdTask(task) || task.claimable || Boolean(adReadyToCollect[String(task.id)])).map((task) => (
             <Card key={task.id} className="border-border/70 bg-card/85 p-4">
               <h2 className="font-semibold">{localizeTask(task).title}</h2>
               <p className="text-sm text-muted-foreground">{localizeTask(task).description}</p>
