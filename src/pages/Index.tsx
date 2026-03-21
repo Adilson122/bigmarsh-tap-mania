@@ -681,8 +681,8 @@ const Index = () => {
               <Button variant="secondary" disabled={busyAction !== null} onClick={copyReferralLink}>Copiar link</Button>
               <Button disabled={busyAction !== null} onClick={shareReferralLink}>Compartilhar</Button>
             </div>
-            <Button className="mt-2 w-full" variant="outline" disabled={busyAction !== null} onClick={connectWallet}>
-              Conectar carteira
+            <Button className="mt-2 w-full" variant="outline" disabled={busyAction !== null} onClick={() => setActiveTab("passes")}>
+              Ir para conectar carteira
             </Button>
           </Card>
           <Card className="border-border/70 bg-card/85 p-4">
