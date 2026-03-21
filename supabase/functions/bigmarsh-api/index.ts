@@ -25,7 +25,7 @@ const toDateKey = (value: string) => value.slice(0, 10);
 const getPublishedPasses = async () => {
   const { data } = await db
     .from("monetization_passes")
-    .select("pass_type,title,duration_days,price_usd,benefits")
+    .select("pass_type,title,duration_days,price_usd,price_ton,benefits")
     .eq("is_visible", true)
     .eq("is_enabled", true)
     .order("sort_order", { ascending: true });
@@ -51,12 +51,14 @@ const normalizeState = async (state: any, telegramId: number) => {
     tasks: Array.isArray(state.tasks)
       ? state.tasks.map((task: any) => {
           const completed = Boolean(task?.completed);
-          let claimable = false;
+          let claimable = Boolean(task?.claimable ?? false);
           const target = Math.max(1, Number(task?.target_value ?? (task?.kind === "invite_1" || task?.kind === "link_visit" ? 1 : 500)));
 
           if (!completed) {
             if (task?.kind === "taps_500") claimable = Number(state?.user?.total_taps ?? 0) >= target;
             if (task?.kind === "invite_1") claimable = invitedToday >= target;
+            if (task?.kind === "link_visit") claimable = String(task?.link_url ?? "").trim().length > 0;
+            if (task?.kind === "watch_ad" || task?.kind === "ad_watch") claimable = Boolean(task?.claimable ?? false);
           }
 
           return {
@@ -122,7 +124,7 @@ Deno.serve(async (req) => {
     const initData = body.initData as string | undefined;
     const debugUser = body.debugUser;
 
-    if (["init", "tap", "buy_upgrade", "claim_task", "leaderboard", "admin_login", "admin_dashboard", "admin_update_user", "admin_create_task", "admin_delete_task", "admin_save_task_settings", "admin_save_pass"].includes(action)) {
+    if (["init", "tap", "buy_upgrade", "claim_task", "claim_ad_slot", "leaderboard", "connect_wallet", "create_pass_checkout", "confirm_pass_checkout", "admin_login", "admin_dashboard", "admin_update_user", "admin_create_task", "admin_delete_task", "admin_save_task_settings", "admin_save_pass", "admin_save_app_settings"].includes(action)) {
       const tgUser = await verifyInitData(initData, debugUser);
       const telegramId = Number(tgUser.id);
 
@@ -167,6 +169,51 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify({ state: normalized }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
+      if (action === "claim_ad_slot") {
+        const slotNo = Number(body.slotNo ?? 0);
+        if (!Number.isFinite(slotNo) || slotNo < 1 || slotNo > 10) throw new Error("invalid_ad_slot");
+
+        const { data: claimRes, error } = await db.rpc("claim_ad_slot", { _telegram_id: telegramId, _slot_no: slotNo });
+        if (error) throw new Error(error.message);
+        if (!claimRes?.[0]?.ok) throw new Error("ad_not_claimable_yet");
+
+        const { data: state } = await db.rpc("get_state", { _telegram_id: telegramId });
+        const normalized = await normalizeState(state, telegramId);
+        return new Response(JSON.stringify({ state: normalized, claim: claimRes?.[0] ?? null }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      if (action === "connect_wallet") {
+        const walletAddress = String(body.walletAddress ?? "").trim();
+        const { data, error } = await db.rpc("connect_user_wallet", { _telegram_id: telegramId, _wallet_address: walletAddress });
+        if (error) throw new Error(error.message);
+
+        const { data: state } = await db.rpc("get_state", { _telegram_id: telegramId });
+        const normalized = await normalizeState(state, telegramId);
+        return new Response(JSON.stringify({ wallet_address: data, state: normalized }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      if (action === "create_pass_checkout") {
+        const passType = String(body.passType ?? "");
+        const { data, error } = await db.rpc("create_pass_checkout", { _telegram_id: telegramId, _pass_type: passType });
+        if (error) throw new Error(error.message);
+        return new Response(JSON.stringify({ checkout: data }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      if (action === "confirm_pass_checkout") {
+        const purchaseId = String(body.purchaseId ?? "");
+        const txHash = String(body.txHash ?? "").trim() || null;
+        const { data, error } = await db.rpc("confirm_pass_checkout", {
+          _telegram_id: telegramId,
+          _purchase_id: purchaseId,
+          _tx_hash: txHash,
+        });
+        if (error) throw new Error(error.message);
+
+        const { data: state } = await db.rpc("get_state", { _telegram_id: telegramId });
+        const normalized = await normalizeState(state, telegramId);
+        return new Response(JSON.stringify({ result: data, state: normalized }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
       if (action === "leaderboard") {
         const { data: rows } = await db.rpc("get_leaderboard", { _telegram_id: telegramId, _scope: body.scope ?? "all_time" });
         return new Response(JSON.stringify({ rows }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -184,7 +231,7 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify({ token }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
-      if (["admin_dashboard", "admin_update_user", "admin_create_task", "admin_delete_task", "admin_save_task_settings", "admin_save_pass"].includes(action)) {
+      if (["admin_dashboard", "admin_update_user", "admin_create_task", "admin_delete_task", "admin_save_task_settings", "admin_save_pass", "admin_save_app_settings"].includes(action)) {
         await requireAdmin(String(body.adminToken ?? ""));
       }
 
@@ -243,12 +290,19 @@ Deno.serve(async (req) => {
           title: String(body.title ?? "Passe"),
           duration_days: Math.max(1, Number(body.duration_days ?? 7)),
           price_usd: Math.max(0, Number(body.price_usd ?? 0)),
+          price_ton: Math.max(0.01, Number(body.price_ton ?? 0.1)),
           benefits: String(body.benefits ?? ""),
           is_visible: Boolean(body.is_visible ?? false),
           is_enabled: Boolean(body.is_enabled ?? false),
           sort_order: Number(body.sort_order ?? 0),
         }, { onConflict: "pass_type" });
 
+        return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      if (action === "admin_save_app_settings") {
+        const tonReceiverAddress = String(body.ton_receiver_address ?? "").trim();
+        await db.from("app_settings").upsert({ id: 1, ton_receiver_address: tonReceiverAddress }, { onConflict: "id" });
         return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
@@ -259,15 +313,16 @@ Deno.serve(async (req) => {
 
       if (action === "admin_dashboard") {
         const query = String(body.query ?? "");
-        const [{ data: stats }, { data: taskRows }, { data: referralRows }, { data: snapshotRows }, { count: allUsersCount }, { count: fakeUsersCount }, { data: passRows }, { data: taskSettings }] = await Promise.all([
+        const [{ data: stats }, { data: taskRows }, { data: referralRows }, { data: snapshotRows }, { count: allUsersCount }, { count: fakeUsersCount }, { data: passRows }, { data: taskSettings }, { data: appSettings }] = await Promise.all([
           db.rpc("get_admin_stats"),
           db.from("tasks").select("id,title,reward_bmh,kind,target_value,link_url").eq("active_date", new Date().toISOString().slice(0, 10)).order("created_at", { ascending: false }),
           db.from("referrals").select("id,referrer_id,referred_id,created_at").order("created_at", { ascending: false }).limit(100),
           db.from("users").select("telegram_id,daily_streak,referrals_count").or("daily_streak.gt.7,referrals_count.gt.5").limit(500),
           db.from("users").select("telegram_id", { count: "exact", head: true }),
           db.from("users").select("telegram_id", { count: "exact", head: true }).or("telegram_id.gte.900000,username.ilike.%ref_master%,username.ilike.%new_marsh%,username.ilike.%dev%"),
-          db.from("monetization_passes").select("pass_type,title,duration_days,price_usd,benefits,is_visible,is_enabled,sort_order").order("sort_order", { ascending: true }),
+          db.from("monetization_passes").select("pass_type,title,duration_days,price_usd,price_ton,benefits,is_visible,is_enabled,sort_order").order("sort_order", { ascending: true }),
           db.from("task_settings").select("referral_goal,referral_reward_bmh,tap_goal,tap_reward_bmh").eq("id", 1).maybeSingle(),
+          db.from("app_settings").select("ton_receiver_address").eq("id", 1).maybeSingle(),
         ]);
 
         let usersQuery = db.from("users").select("telegram_id,username,first_name,bmh_balance,energy,level,daily_streak,referrals_count,is_banned").order("created_at", { ascending: false }).limit(100);
@@ -295,6 +350,7 @@ Deno.serve(async (req) => {
           snapshot: snapshotRows ?? [],
           monetization_passes: passRows ?? [],
           task_settings: taskSettings ?? null,
+          app_settings: appSettings ?? null,
         }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
