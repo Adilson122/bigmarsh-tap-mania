@@ -47,10 +47,15 @@ type MonetizationPass = {
   title: string;
   duration_days: number;
   price_usd: number;
+  price_ton: number;
   benefits: string;
   is_visible: boolean;
   is_enabled: boolean;
   sort_order: number;
+};
+
+type AppSettings = {
+  ton_receiver_address: string;
 };
 
 type AdminTab = "real" | "fake" | "tasks" | "monetization" | "referrals" | "airdrop";
@@ -82,6 +87,7 @@ const Admin = () => {
     tap_reward_bmh: 350,
   });
   const [passes, setPasses] = useState<MonetizationPass[]>([]);
+  const [appSettings, setAppSettings] = useState<AppSettings>({ ton_receiver_address: "" });
   const [panelStatus, setPanelStatus] = useState<"online" | "degraded" | "offline">("online");
   const [panelLatency, setPanelLatency] = useState<number | null>(null);
   const [panelSyncAt, setPanelSyncAt] = useState<Date | null>(null);
@@ -114,6 +120,9 @@ const Admin = () => {
         setTaskSettings(data.task_settings);
       }
       setPasses(data.monetization_passes ?? []);
+      if (data.app_settings) {
+        setAppSettings({ ton_receiver_address: String(data.app_settings.ton_receiver_address ?? "") });
+      }
     } catch (e) {
       setPanelStatus("offline");
       setPanelError(e instanceof Error ? e.message : "Erro ao carregar painel");
@@ -183,6 +192,7 @@ const Admin = () => {
       title: type === "weekly" ? "Passe Semanal" : "Passe Mensal",
       duration_days: type === "weekly" ? 7 : 30,
       price_usd: 0,
+      price_ton: type === "weekly" ? 0.12 : 0.42,
       benefits: "",
       is_visible: false,
       is_enabled: false,
@@ -430,7 +440,41 @@ const Admin = () => {
 
       {activeTab === "monetization" && (
         <Card className="border-border/70 bg-card/85 p-4">
-          <p className="mb-2 font-semibold">Passes (USD)</p>
+          <p className="mb-2 font-semibold">Passes (USD + TON)</p>
+
+          <div className="mb-4 rounded-lg bg-secondary/80 p-3 text-xs">
+            <p className="mb-2 font-semibold">Endereço receptor do checkout TON</p>
+            <div className="grid gap-2 md:grid-cols-[1fr_auto]">
+              <Input
+                value={appSettings.ton_receiver_address}
+                onChange={(e) => setAppSettings((prev) => ({ ...prev, ton_receiver_address: e.target.value }))}
+                placeholder="UQ... (endereço TON que recebe pagamentos)"
+              />
+              <Button
+                disabled={loadingAction !== null}
+                onClick={async () => {
+                  try {
+                    setLoadingAction("save-app-settings");
+                    setPanelError(null);
+                    await callBigMarsh("admin_save_app_settings", {
+                      adminToken: token,
+                      ton_receiver_address: appSettings.ton_receiver_address,
+                      initData,
+                      debugUser,
+                    });
+                    await loadPanel(token);
+                  } catch (e) {
+                    setPanelError(e instanceof Error ? e.message : "Erro ao salvar endereço TON");
+                  } finally {
+                    setLoadingAction(null);
+                  }
+                }}
+              >
+                Salvar endereço
+              </Button>
+            </div>
+          </div>
+
           <div className="space-y-4">
             {(["weekly", "monthly"] as const).map((type) => {
               const pass = passByType(type);
@@ -443,6 +487,13 @@ const Admin = () => {
                       type="number"
                       value={pass.price_usd}
                       onChange={(e) => updatePass(type, (base) => ({ ...base, price_usd: Number(e.target.value) }))}
+                    />
+                    <Input
+                      type="number"
+                      step="0.001"
+                      value={pass.price_ton}
+                      onChange={(e) => updatePass(type, (base) => ({ ...base, price_ton: Number(e.target.value) }))}
+                      placeholder="Preço em TON"
                     />
                     <Input
                       type="number"

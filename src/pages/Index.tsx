@@ -17,6 +17,15 @@ type LeaderboardRow = {
 
 type TabKey = "tap" | "upgrades" | "referrals" | "leaderboard" | "tasks" | "passes";
 
+type PassCheckout = {
+  purchase_id: string;
+  amount_nano: number;
+  amount_ton: number;
+  recipient_address: string;
+  payment_comment: string;
+  expires_at: string;
+};
+
 const tabs: Array<{ key: TabKey; label: string; icon: typeof Zap }> = [
   { key: "tap", label: "Tap", icon: Zap },
   { key: "upgrades", label: "Upgrades", icon: ArrowUpCircle },
@@ -103,9 +112,12 @@ const Index = () => {
   const [tapFx, setTapFx] = useState<Array<{ id: number; value: number; x: number }>>([]);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [busyAction, setBusyAction] = useState<"tap" | "upgrade" | "task" | "referral_copy" | "referral_share" | "wallet" | null>(null);
+  const [busyAction, setBusyAction] = useState<"tap" | "upgrade" | "task" | "referral_copy" | "referral_share" | "wallet" | "pass_checkout" | "pass_confirm" | null>(null);
   const [timedOut, setTimedOut] = useState(false);
   const [accountBlocked, setAccountBlocked] = useState(false);
+  const [walletInput, setWalletInput] = useState("");
+  const [passCheckout, setPassCheckout] = useState<PassCheckout | null>(null);
+  const [txHashInput, setTxHashInput] = useState("");
 
   const telegramUser = useMemo(() => getTelegramUser(), []);
   const initData = getTelegramApp()?.initData ?? "";
@@ -196,6 +208,11 @@ const Index = () => {
   useEffect(() => {
     if (activeTab === "leaderboard") loadLeaderboard();
   }, [activeTab, lbScope]);
+
+  useEffect(() => {
+    if (!state?.user.wallet_address) return;
+    setWalletInput(state.user.wallet_address);
+  }, [state?.user.wallet_address]);
 
   const onTap = async () => {
     if (!state || state.user.energy <= 0) return;
@@ -306,25 +323,115 @@ const Index = () => {
     }
   };
 
-  const connectWallet = () => {
-    const tg = getTelegramApp();
-    if (!tg) {
-      setActionError("Conexão de wallet disponível apenas dentro do Telegram.");
+  const claimAdSlot = async (slotNo: number) => {
+    try {
+      setBusyAction("task");
+      setActionError(null);
+      await callBigMarsh("claim_ad_slot", {
+        initData,
+        slotNo,
+        debugUser: telegramUser ?? { id: 777001, first_name: "Dev", username: "bigmarsh_dev" },
+      });
+      await bootstrap({ silent: true });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Falha ao coletar anúncio.";
+      if (msg === "user_banned") {
+        setAccountBlocked(true);
+        setActionError(null);
+      } else if (msg === "ad_not_claimable_yet") {
+        setActionError("Esse anúncio acabou de ser usado. Aguarde o próximo ciclo automático.");
+      } else {
+        setActionError(msg);
+      }
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const connectWallet = async () => {
+    const address = walletInput.trim();
+    if (!address) {
+      setActionError("Informe o endereço da sua carteira TON.");
       return;
     }
 
     try {
       setBusyAction("wallet");
       setActionError(null);
-      if (typeof tg.openTelegramLink === "function") {
-        tg.openTelegramLink("https://t.me/wallet");
-      } else if (typeof tg.openLink === "function") {
-        tg.openLink("https://t.me/wallet", { try_instant_view: false });
+      await callBigMarsh("connect_wallet", {
+        initData,
+        walletAddress: address,
+        debugUser: telegramUser ?? { id: 777001, first_name: "Dev", username: "bigmarsh_dev" },
+      });
+      await bootstrap({ silent: true });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Não foi possível conectar a carteira.";
+      if (msg === "wallet_address_invalid") {
+        setActionError("Endereço de carteira inválido.");
       } else {
-        window.open("https://t.me/wallet", "_blank", "noopener,noreferrer");
+        setActionError(msg);
       }
-    } catch {
-      setActionError("Não foi possível abrir a wallet agora.");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const createPassCheckout = async (passType: "weekly" | "monthly") => {
+    try {
+      setBusyAction("pass_checkout");
+      setActionError(null);
+      const data = await callBigMarsh<{ checkout: PassCheckout }>("create_pass_checkout", {
+        initData,
+        passType,
+        debugUser: telegramUser ?? { id: 777001, first_name: "Dev", username: "bigmarsh_dev" },
+      });
+
+      setPassCheckout(data.checkout);
+      setTxHashInput("");
+
+      const paymentUrl = `ton://transfer/${encodeURIComponent(data.checkout.recipient_address)}?amount=${data.checkout.amount_nano}&text=${encodeURIComponent(data.checkout.payment_comment)}`;
+      const tg = getTelegramApp();
+      if (tg?.openLink) {
+        tg.openLink(paymentUrl, { try_instant_view: false });
+      } else {
+        window.open(paymentUrl, "_blank", "noopener,noreferrer");
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Falha ao iniciar checkout.";
+      if (msg === "wallet_not_connected") {
+        setActionError("Conecte sua carteira antes de comprar um passe.");
+      } else if (msg === "checkout_receiver_not_configured") {
+        setActionError("Checkout TON ainda não configurado no painel admin.");
+      } else {
+        setActionError(msg);
+      }
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const confirmPassCheckout = async () => {
+    if (!passCheckout) return;
+    try {
+      setBusyAction("pass_confirm");
+      setActionError(null);
+      await callBigMarsh("confirm_pass_checkout", {
+        initData,
+        purchaseId: passCheckout.purchase_id,
+        txHash: txHashInput.trim() || null,
+        debugUser: telegramUser ?? { id: 777001, first_name: "Dev", username: "bigmarsh_dev" },
+      });
+      setPassCheckout(null);
+      setTxHashInput("");
+      await bootstrap({ silent: true });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Falha ao confirmar compra.";
+      if (msg === "purchase_expired") {
+        setActionError("Checkout expirou. Inicie a compra novamente.");
+        setPassCheckout(null);
+      } else {
+        setActionError(msg);
+      }
     } finally {
       setBusyAction(null);
     }
@@ -333,7 +440,12 @@ const Index = () => {
   const handleTaskAction = async (task: GameState["tasks"][number]) => {
     if (task.completed) return;
 
-    if (isAdTask(task) && !task.claimable) {
+    if (isAdTask(task)) {
+      if (!task.claimable) {
+        setActionError("Esse anúncio está em recarga. Tente em instantes.");
+        return;
+      }
+
       const monetagSdk = await loadMonetagSdk();
       if (!monetagSdk) {
         setActionError("Anúncio indisponível no momento.");
@@ -350,7 +462,16 @@ const Index = () => {
         setActionError(null);
 
         await monetagSdk();
-        await claimTask(task.id);
+        if (String(task.id).startsWith("ad_slot_")) {
+          const slotNo = Number(String(task.id).replace("ad_slot_", ""));
+          if (Number.isFinite(slotNo) && slotNo >= 1 && slotNo <= 10) {
+            await claimAdSlot(slotNo);
+          } else {
+            setActionError("Slot de anúncio inválido.");
+          }
+        } else {
+          await claimTask(task.id);
+        }
       } catch {
         setActionError("Não foi possível carregar o anúncio agora.");
       } finally {
@@ -449,7 +570,7 @@ const Index = () => {
           <Card className="relative overflow-hidden border-border/70 bg-card/85 p-6 text-center">
             <p className="mb-3 text-xs uppercase tracking-wide text-muted-foreground">Combo ativo e haptics Telegram</p>
             <button onClick={onTap} className="relative mx-auto flex h-52 w-52 items-center justify-center rounded-full border border-primary/70 bg-secondary text-8xl shadow-glow transition-transform active:scale-95" aria-label="Tap no Marsh">
-              🐹
+              🦊
               <span className="pointer-events-none absolute inset-0 rounded-full border border-primary/60 animate-pulseTap" />
             </button>
             {tapFx.map((f) => (
@@ -488,27 +609,61 @@ const Index = () => {
             <div className="mb-3 flex items-center justify-between">
               <div>
                 <h2 className="font-semibold">Conectar Wallet</h2>
-                <p className="text-xs text-muted-foreground">Necessário para agilizar compras de passe.</p>
+                <p className="text-xs text-muted-foreground">Vincule seu endereço TON para comprar passes e participar do airdrop.</p>
               </div>
               <Wallet className="h-5 w-5 text-primary" />
             </div>
-            <Button className="w-full" variant="outline" disabled={busyAction !== null} onClick={connectWallet}>
-              Abrir Wallet no Telegram
+            <input
+              value={walletInput}
+              onChange={(e) => setWalletInput(e.target.value)}
+              className="mb-2 w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+              placeholder="Cole seu endereço TON"
+            />
+            <Button className="w-full" variant="outline" disabled={busyAction !== null} onClick={() => void connectWallet()}>
+              {state.user.wallet_address ? "Atualizar carteira" : "Conectar carteira"}
             </Button>
+            {state.user.wallet_address && <p className="mt-2 break-all text-xs text-muted-foreground">Conectada: {state.user.wallet_address}</p>}
           </Card>
+          {(state.active_passes ?? []).length > 0 && (
+            <Card className="border-border/70 bg-card/85 p-4">
+              <p className="mb-2 font-semibold">Passes ativos</p>
+              <div className="space-y-1 text-xs">
+                {(state.active_passes ?? []).map((p) => (
+                  <p key={`${p.pass_type}-${p.expires_at}`}>
+                    {p.pass_type === "weekly" ? "Semanal" : "Mensal"} ativo até {new Date(p.expires_at).toLocaleString("pt-BR")}
+                  </p>
+                ))}
+              </div>
+            </Card>
+          )}
           {(state.monetization_passes ?? []).map((pass) => (
             <Card key={pass.pass_type} className="border-border/70 bg-card/85 p-4">
               <div className="mb-2 flex items-center justify-between">
                 <h2 className="font-semibold">{pass.title}</h2>
-                <span className="text-sm text-primary">${Number(pass.price_usd).toFixed(2)}</span>
+                <span className="text-sm text-primary">{Number(pass.price_ton ?? 0).toFixed(3)} TON</span>
               </div>
               <p className="text-sm text-muted-foreground">Duração: {pass.duration_days} dia(s)</p>
               <p className="mt-1 text-sm text-muted-foreground">{pass.benefits}</p>
-              <Button className="mt-3 w-full" disabled>
-                Comprar em breve
+              <Button className="mt-3 w-full" disabled={busyAction !== null} onClick={() => void createPassCheckout(pass.pass_type)}>
+                Comprar agora
               </Button>
             </Card>
           ))}
+          {passCheckout && (
+            <Card className="border-border/70 bg-card/85 p-4">
+              <p className="font-semibold">Checkout iniciado</p>
+              <p className="mt-1 text-xs text-muted-foreground">Comentário da transferência: {passCheckout.payment_comment}</p>
+              <input
+                value={txHashInput}
+                onChange={(e) => setTxHashInput(e.target.value)}
+                className="mt-3 w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+                placeholder="Hash da transação (opcional)"
+              />
+              <Button className="mt-2 w-full" disabled={busyAction !== null} onClick={() => void confirmPassCheckout()}>
+                Confirmar pagamento
+              </Button>
+            </Card>
+          )}
           {(state.monetization_passes ?? []).length === 0 && (
             <Card className="border-border/70 bg-card/85 p-4 text-sm text-muted-foreground">
               Nenhum passe disponível no momento.
@@ -526,8 +681,8 @@ const Index = () => {
               <Button variant="secondary" disabled={busyAction !== null} onClick={copyReferralLink}>Copiar link</Button>
               <Button disabled={busyAction !== null} onClick={shareReferralLink}>Compartilhar</Button>
             </div>
-            <Button className="mt-2 w-full" variant="outline" disabled={busyAction !== null} onClick={connectWallet}>
-              Conectar carteira
+            <Button className="mt-2 w-full" variant="outline" disabled={busyAction !== null} onClick={() => setActiveTab("passes")}>
+              Ir para conectar carteira
             </Button>
           </Card>
           <Card className="border-border/70 bg-card/85 p-4">
