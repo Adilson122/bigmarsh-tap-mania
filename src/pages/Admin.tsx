@@ -33,6 +33,15 @@ type TaskSettings = {
   tap_reward_bmh: number;
 };
 
+type AdminTask = {
+  id: string;
+  title: string;
+  reward_bmh: number;
+  kind: "taps_500" | "invite_1" | "watch_ad" | "ad_watch" | "link_visit";
+  target_value?: number | null;
+  link_url?: string | null;
+};
+
 type MonetizationPass = {
   pass_type: "weekly" | "monthly";
   title: string;
@@ -55,7 +64,7 @@ const Admin = () => {
   const [token, setToken] = useState<string | null>(null);
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
-  const [tasks, setTasks] = useState<any[]>([]);
+  const [tasks, setTasks] = useState<AdminTask[]>([]);
   const [referrals, setReferrals] = useState<any[]>([]);
   const [snapshot, setSnapshot] = useState<any[]>([]);
   const [query, setQuery] = useState("");
@@ -63,8 +72,9 @@ const Admin = () => {
   const [newTaskTitle, setNewTaskTitle] = useState("Task custom");
   const [newTaskReward, setNewTaskReward] = useState(5000);
   const [newTaskDescription, setNewTaskDescription] = useState("Task criada pelo admin");
-  const [newTaskKind, setNewTaskKind] = useState<"taps_500" | "invite_1">("taps_500");
+  const [newTaskKind, setNewTaskKind] = useState<"taps_500" | "invite_1" | "link_visit">("taps_500");
   const [newTaskTarget, setNewTaskTarget] = useState(500);
+  const [newTaskLink, setNewTaskLink] = useState("");
   const [taskSettings, setTaskSettings] = useState<TaskSettings>({
     referral_goal: 1,
     referral_reward_bmh: 8000,
@@ -315,12 +325,19 @@ const Admin = () => {
             <Input placeholder="Recompensa BMH" type="number" value={newTaskReward} onChange={(e) => setNewTaskReward(Number(e.target.value))} />
             <Input placeholder="Descrição" value={newTaskDescription} onChange={(e) => setNewTaskDescription(e.target.value)} />
             <Input
-              placeholder={newTaskKind === "invite_1" ? "Meta de convites" : "Meta de taps"}
+              placeholder={newTaskKind === "invite_1" ? "Meta de convites" : newTaskKind === "link_visit" ? "Meta fixa (1)" : "Meta de taps"}
               type="number"
               value={newTaskTarget}
               onChange={(e) => setNewTaskTarget(Number(e.target.value))}
+              disabled={newTaskKind === "link_visit"}
             />
-            <div className="grid grid-cols-2 gap-2">
+            <Input
+              placeholder="Link da tarefa (https://...)"
+              value={newTaskLink}
+              onChange={(e) => setNewTaskLink(e.target.value)}
+              disabled={newTaskKind !== "link_visit"}
+            />
+            <div className="grid grid-cols-3 gap-2">
               <Button
                 variant={newTaskKind === "taps_500" ? "default" : "secondary"}
                 onClick={() => {
@@ -339,6 +356,15 @@ const Admin = () => {
               >
                 Referral
               </Button>
+              <Button
+                variant={newTaskKind === "link_visit" ? "default" : "secondary"}
+                onClick={() => {
+                  setNewTaskKind("link_visit");
+                  setNewTaskTarget(1);
+                }}
+              >
+                Link
+              </Button>
             </div>
           </div>
           <div className="mb-4">
@@ -355,6 +381,7 @@ const Admin = () => {
                     description: newTaskDescription,
                     kind: newTaskKind,
                     targetValue: newTaskTarget,
+                     linkUrl: newTaskKind === "link_visit" ? newTaskLink : null,
                     initData,
                     debugUser,
                   });
@@ -372,7 +399,10 @@ const Admin = () => {
           <div className="space-y-2 text-xs">
             {tasks.map((t) => (
               <div key={t.id} className="flex items-center justify-between rounded-lg bg-secondary/80 px-3 py-2">
-                <span>{t.title} ({t.target_value ?? "-"}) (+{t.reward_bmh} BMH)</span>
+                <span>
+                  {t.title} ({t.target_value ?? "-"}) (+{t.reward_bmh} BMH)
+                  {t.kind === "link_visit" && t.link_url ? ` · ${t.link_url}` : ""}
+                </span>
                 <Button
                   variant="destructive"
                   disabled={loadingAction !== null}

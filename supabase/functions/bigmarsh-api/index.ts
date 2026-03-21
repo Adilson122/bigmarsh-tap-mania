@@ -47,7 +47,7 @@ const normalizeState = async (state: any, telegramId: number) => {
       ? state.tasks.map((task: any) => {
           const completed = Boolean(task?.completed);
           let claimable = false;
-          const target = Math.max(1, Number(task?.target_value ?? (task?.kind === "invite_1" ? 1 : 500)));
+          const target = Math.max(1, Number(task?.target_value ?? (task?.kind === "invite_1" || task?.kind === "link_visit" ? 1 : 500)));
 
           if (!completed) {
             if (task?.kind === "taps_500") claimable = Number(state?.user?.total_taps ?? 0) >= target;
@@ -199,7 +199,8 @@ Deno.serve(async (req) => {
           reward_bmh: Number(body.reward_bmh ?? 0),
           description: body.description ?? null,
           kind: body.kind ?? "taps_500",
-          target_value: Math.max(1, Number(body.targetValue ?? (body.kind === "invite_1" ? 1 : 500))),
+          target_value: Math.max(1, Number(body.targetValue ?? (body.kind === "invite_1" || body.kind === "link_visit" ? 1 : 500))),
+          link_url: body.kind === "link_visit" ? String(body.linkUrl ?? "").trim() || null : null,
           active_date: new Date().toISOString().slice(0, 10),
         }, { onConflict: "kind,active_date" });
         return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -242,7 +243,7 @@ Deno.serve(async (req) => {
         const query = String(body.query ?? "");
         const [{ data: stats }, { data: taskRows }, { data: referralRows }, { data: snapshotRows }, { count: allUsersCount }, { count: fakeUsersCount }, { data: passRows }, { data: taskSettings }] = await Promise.all([
           db.rpc("get_admin_stats"),
-          db.from("tasks").select("id,title,reward_bmh,kind,target_value").eq("active_date", new Date().toISOString().slice(0, 10)).order("created_at", { ascending: false }),
+          db.from("tasks").select("id,title,reward_bmh,kind,target_value,link_url").eq("active_date", new Date().toISOString().slice(0, 10)).order("created_at", { ascending: false }),
           db.from("referrals").select("id,referrer_id,referred_id,created_at").order("created_at", { ascending: false }).limit(100),
           db.from("users").select("telegram_id,daily_streak,referrals_count").or("daily_streak.gt.7,referrals_count.gt.5").limit(500),
           db.from("users").select("telegram_id", { count: "exact", head: true }),
