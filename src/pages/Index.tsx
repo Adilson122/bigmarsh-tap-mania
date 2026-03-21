@@ -783,7 +783,6 @@ const Index = () => {
             <p className="text-sm text-muted-foreground">Link único</p>
             <p className="mt-1 break-all text-sm">{state.user.referral_link}</p>
             <div className="mt-3 grid grid-cols-2 gap-2">
-              <Button variant="secondary" disabled={busyAction !== null} onClick={copyReferralLink}>Copiar link</Button>
               <Button variant="secondary" disabled={busyAction !== null} onClick={copyReferralLink}>{copy.copyLink}</Button>
               <Button disabled={busyAction !== null} onClick={shareReferralLink}>{copy.share}</Button>
             </div>
