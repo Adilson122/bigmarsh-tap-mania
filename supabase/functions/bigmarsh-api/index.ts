@@ -130,6 +130,8 @@ Deno.serve(async (req) => {
           _start_param: body.startParam ?? null,
         });
 
+        await db.rpc("ensure_daily_tasks");
+
         const { data: state } = await db.rpc("get_state", { _telegram_id: telegramId });
         const normalized = await normalizeState(state, telegramId);
         return new Response(JSON.stringify({ state: normalized }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
