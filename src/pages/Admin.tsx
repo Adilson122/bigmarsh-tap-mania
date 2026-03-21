@@ -70,16 +70,16 @@ const Admin = () => {
   const [query, setQuery] = useState("");
   const [activeTab, setActiveTab] = useState<AdminTab>("real");
   const [newTaskTitle, setNewTaskTitle] = useState("Task custom");
-  const [newTaskReward, setNewTaskReward] = useState(5000);
+  const [newTaskReward, setNewTaskReward] = useState(500);
   const [newTaskDescription, setNewTaskDescription] = useState("Task criada pelo admin");
   const [newTaskKind, setNewTaskKind] = useState<"taps_500" | "invite_1" | "link_visit">("taps_500");
   const [newTaskTarget, setNewTaskTarget] = useState(500);
   const [newTaskLink, setNewTaskLink] = useState("");
   const [taskSettings, setTaskSettings] = useState<TaskSettings>({
     referral_goal: 1,
-    referral_reward_bmh: 8000,
-    tap_goal: 500,
-    tap_reward_bmh: 6000,
+    referral_reward_bmh: 500,
+    tap_goal: 300,
+    tap_reward_bmh: 350,
   });
   const [passes, setPasses] = useState<MonetizationPass[]>([]);
   const [panelStatus, setPanelStatus] = useState<"online" | "degraded" | "offline">("online");
@@ -319,7 +319,8 @@ const Admin = () => {
             </Button>
           </div>
 
-          <p className="mb-2 font-semibold">Task manual do dia</p>
+          <p className="mb-1 font-semibold">Task manual do dia</p>
+          <p className="mb-2 text-xs text-muted-foreground">Tasks de anúncio são automáticas e não devem ser criadas manualmente.</p>
           <div className="mb-4 grid gap-2 md:grid-cols-2">
             <Input placeholder="Título" value={newTaskTitle} onChange={(e) => setNewTaskTitle(e.target.value)} />
             <Input placeholder="Recompensa BMH" type="number" value={newTaskReward} onChange={(e) => setNewTaskReward(Number(e.target.value))} />
