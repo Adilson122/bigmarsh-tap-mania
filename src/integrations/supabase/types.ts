@@ -486,6 +486,7 @@ export type Database = {
           energy: number
           first_name: string | null
           is_banned: boolean
+          is_fake: boolean
           last_energy_at: string
           last_login: string | null
           last_tap: string | null
@@ -509,6 +510,7 @@ export type Database = {
           energy?: number
           first_name?: string | null
           is_banned?: boolean
+          is_fake?: boolean
           last_energy_at?: string
           last_login?: string | null
           last_tap?: string | null
@@ -532,6 +534,7 @@ export type Database = {
           energy?: number
           first_name?: string | null
           is_banned?: boolean
+          is_fake?: boolean
           last_energy_at?: string
           last_login?: string | null
           last_tap?: string | null
@@ -675,6 +678,7 @@ export type Database = {
           energy: number
           first_name: string | null
           is_banned: boolean
+          is_fake: boolean
           last_energy_at: string
           last_login: string | null
           last_tap: string | null
