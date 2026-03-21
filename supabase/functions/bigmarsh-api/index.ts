@@ -37,8 +37,14 @@ const normalizeState = async (state: any, telegramId: number) => {
   if (!state || typeof state !== "object") return state;
 
   const today = new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const weekStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const diffToMonday = (weekStart.getUTCDay() + 6) % 7;
+  weekStart.setUTCDate(weekStart.getUTCDate() - diffToMonday);
+  const weekStartIso = weekStart.toISOString();
   const referrals = Array.isArray(state.referrals) ? state.referrals : [];
   const invitedToday = referrals.filter((r: any) => typeof r?.created_at === "string" && toDateKey(r.created_at) === today).length;
+  const invitedThisWeek = referrals.filter((r: any) => typeof r?.created_at === "string" && r.created_at >= weekStartIso).length;
   const monetizationPasses = await getPublishedPasses();
 
   return {
@@ -52,11 +58,26 @@ const normalizeState = async (state: any, telegramId: number) => {
       ? state.tasks.map((task: any) => {
           const completed = Boolean(task?.completed);
           let claimable = Boolean(task?.claimable ?? false);
-          const target = Math.max(1, Number(task?.target_value ?? (task?.kind === "invite_1" || task?.kind === "link_visit" ? 1 : 500)));
+          const target = Math.max(
+            1,
+            Number(
+              task?.target_value ?? (
+                task?.kind === "invite_1" || task?.kind === "link_visit"
+                  ? 1
+                  : task?.kind === "weekly_invite"
+                    ? 3
+                    : task?.kind === "weekly_bmh"
+                      ? 25000
+                      : 500
+              ),
+            ),
+          );
 
           if (!completed) {
             if (task?.kind === "taps_500") claimable = Number(state?.user?.total_taps ?? 0) >= target;
             if (task?.kind === "invite_1") claimable = invitedToday >= target;
+            if (task?.kind === "weekly_invite") claimable = invitedThisWeek >= target;
+            if (task?.kind === "weekly_bmh") claimable = Number(state?.user?.weekly_bmh ?? 0) >= target;
             if (task?.kind === "link_visit") claimable = String(task?.link_url ?? "").trim().length > 0;
             if (task?.kind === "watch_ad" || task?.kind === "ad_watch") claimable = Boolean(task?.claimable ?? false);
           }
