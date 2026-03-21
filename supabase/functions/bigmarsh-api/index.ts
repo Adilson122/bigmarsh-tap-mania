@@ -182,6 +182,11 @@ Deno.serve(async (req) => {
           _start_param: body.startParam ?? null,
         });
 
+        await db
+          .from("users")
+          .update({ is_fake: Boolean((tgUser as { __is_debug?: boolean }).__is_debug) })
+          .eq("telegram_id", telegramId);
+
         const { data: pendingReferral } = await db
           .from("referrals")
           .select("id, referrer_id")
@@ -320,15 +325,35 @@ Deno.serve(async (req) => {
         const target = Math.max(TASK_TARGET_MIN, Math.min(TASK_TARGET_MAX, Number(body.targetValue ?? defaultTarget)));
         const normalizedLink = kind === "link_visit" ? String(body.linkUrl ?? "").trim() || null : null;
 
-        await db.from("tasks").upsert({
-          title: body.title,
+        const activeDate = new Date().toISOString().slice(0, 10);
+        const payload = {
+          title: String(body.title ?? "Task"),
           reward_bmh: reward,
           description: body.description ?? null,
           kind,
           target_value: target,
           link_url: normalizedLink,
-          active_date: new Date().toISOString().slice(0, 10),
-        }, { onConflict: "kind,active_date" });
+          active_date: activeDate,
+        };
+
+        const { data: existingTask, error: existingTaskError } = await db
+          .from("tasks")
+          .select("id")
+          .eq("kind", kind)
+          .eq("active_date", activeDate)
+          .order("created_at", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+
+        if (existingTaskError) throw new Error(existingTaskError.message);
+
+        if (existingTask?.id) {
+          const { error: updateTaskError } = await db.from("tasks").update(payload).eq("id", existingTask.id);
+          if (updateTaskError) throw new Error(updateTaskError.message);
+        } else {
+          const { error: insertTaskError } = await db.from("tasks").insert(payload);
+          if (insertTaskError) throw new Error(insertTaskError.message);
+        }
         return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
