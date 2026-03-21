@@ -4,6 +4,9 @@ import { callBigMarsh, type GameState } from "@/lib/bigmarsh-api";
 import { getStartParam, getTelegramApp, getTelegramUser, setupTelegram } from "@/lib/telegram";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import adTaskInterstitialImg from "@/assets/ads/ad-task-interstitial.jpg";
+import adTaskRewardImg from "@/assets/ads/ad-task-reward.jpg";
+import adTaskGenericImg from "@/assets/ads/ad-task-generic.jpg";
 
 type LeaderboardRow = {
   rank_no: number;
@@ -44,6 +47,11 @@ const withTimeout = async <T,>(promise: Promise<T>, ms: number): Promise<T> => {
 const isAdTask = (task: GameState["tasks"][number]) => {
   const kind = String(task.kind ?? "").toLowerCase();
   return kind === "watch_ad" || kind === "ad_watch";
+};
+
+const adTaskImageByKind: Partial<Record<GameState["tasks"][number]["kind"], string>> = {
+  watch_ad: adTaskInterstitialImg,
+  ad_watch: adTaskRewardImg,
 };
 
 type MonetagShow = (
@@ -301,15 +309,16 @@ const Index = () => {
         return;
       }
 
+      if (!getTelegramApp()) {
+        setActionError("Essas tarefas de anúncio só funcionam dentro do Telegram.");
+        return;
+      }
+
       try {
         setBusyAction("task");
         setActionError(null);
 
-        if (task.kind === "ad_watch") {
-          await monetagSdk("pop");
-        } else {
-          await monetagSdk();
-        }
+        await monetagSdk();
         await claimTask(task.id);
       } catch {
         setActionError("Não foi possível carregar o anúncio agora.");
@@ -509,6 +518,16 @@ const Index = () => {
         <section className="space-y-3">
           {state.tasks.map((task) => (
             <Card key={task.id} className="border-border/70 bg-card/85 p-4">
+              {isAdTask(task) && (
+                <div className="mb-3 overflow-hidden rounded-xl border border-border/70 bg-secondary/40">
+                  <img
+                    src={adTaskImageByKind[task.kind] ?? adTaskGenericImg}
+                    alt={`Imagem promocional da tarefa ${task.title}`}
+                    className="h-32 w-full object-cover"
+                    loading="lazy"
+                  />
+                </div>
+              )}
               <h2 className="font-semibold">{task.title}</h2>
               <p className="text-sm text-muted-foreground">{task.description}</p>
               <div className="mt-3 flex items-center justify-between">
