@@ -162,22 +162,6 @@ const Index = () => {
   }, []);
 
   useEffect(() => {
-    const monetagSdk = (window as Window & { show_10755955?: MonetagShow }).show_10755955;
-    if (!monetagSdk) return;
-
-    void monetagSdk({
-      type: "inApp",
-      inAppSettings: {
-        frequency: 2,
-        capping: 0.1,
-        interval: 30,
-        timeout: 5,
-        everyPage: false,
-      },
-    });
-  }, []);
-
-  useEffect(() => {
     if (!state) return;
     const timer = setInterval(() => {
       if (busyAction) return;
@@ -330,6 +314,19 @@ const Index = () => {
     }
 
     if (task.claimable) {
+      await claimTask(task.id);
+      return;
+    }
+
+    if (task.kind === "link_visit") {
+      const rawUrl = String(task.link_url ?? "").trim();
+      if (!rawUrl) {
+        setActionError("Link da tarefa não configurado.");
+        return;
+      }
+
+      const taskUrl = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
+      window.open(taskUrl, "_blank", "noopener,noreferrer");
       await claimTask(task.id);
       return;
     }
@@ -530,10 +527,13 @@ const Index = () => {
               )}
               <h2 className="font-semibold">{task.title}</h2>
               <p className="text-sm text-muted-foreground">{task.description}</p>
+              {task.kind === "link_visit" && task.link_url && (
+                <p className="mt-1 break-all text-xs text-muted-foreground">Destino: {task.link_url}</p>
+              )}
               <div className="mt-3 flex items-center justify-between">
                 <span className="text-primary">+{task.reward_bmh.toLocaleString("pt-BR")} BMH</span>
                 <Button disabled={task.completed || busyAction !== null} onClick={() => void handleTaskAction(task)}>
-                  {task.completed ? "Concluída" : task.claimable ? "Coletar" : "Fazer tarefa"}
+                  {task.completed ? "Concluída" : task.kind === "link_visit" ? "Abrir link" : task.claimable ? "Coletar" : "Fazer tarefa"}
                 </Button>
               </div>
             </Card>
