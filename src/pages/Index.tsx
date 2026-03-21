@@ -404,6 +404,7 @@ const Index = () => {
   const [walletInput, setWalletInput] = useState("");
   const [passCheckout, setPassCheckout] = useState<PassCheckout | null>(null);
   const [txHashInput, setTxHashInput] = useState("");
+  const [adReadyToCollect, setAdReadyToCollect] = useState<Record<string, true>>({});
   const [locale, setLocale] = useState<Locale>(() => {
     const saved = localStorage.getItem("bigmarsh_locale");
     return saved === "pt" || saved === "es" || saved === "en" ? saved : "en";
@@ -413,6 +414,14 @@ const Index = () => {
   const initData = getTelegramApp()?.initData ?? "";
   const copy = messages[locale];
   const numberLocale = locale === "pt" ? "pt-BR" : locale === "es" ? "es-ES" : "en-US";
+  const tabLabels: Record<TabKey, string> = {
+    tap: copy.tabs_tap,
+    upgrades: copy.tabs_upgrades,
+    passes: copy.tabs_passes,
+    referrals: copy.tabs_referrals,
+    leaderboard: copy.tabs_leaderboard,
+    tasks: copy.tabs_tasks,
+  };
 
   useEffect(() => {
     localStorage.setItem("bigmarsh_locale", locale);
@@ -441,6 +450,10 @@ const Index = () => {
 
       const latency = Date.now() - requestStartedAt;
       setState(data.state);
+      setAdReadyToCollect((prev) => {
+        const valid = new Set((data.state.tasks ?? []).map((task) => String(task.id)));
+        return Object.fromEntries(Object.keys(prev).filter((id) => valid.has(id)).map((id) => [id, true])) as Record<string, true>;
+      });
       setAccountBlocked(false);
       setApiStatus(latency > 3000 ? "degraded" : "online");
       setLastSyncAt(new Date());
@@ -448,7 +461,7 @@ const Index = () => {
       setError(null);
       setTimedOut(false);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Erro ao iniciar o app";
+      const msg = e instanceof Error ? e.message : copy.appLoadError;
 
       if (msg === "user_banned") {
         setAccountBlocked(true);
@@ -461,9 +474,9 @@ const Index = () => {
 
       if (msg === "timeout") {
         setTimedOut(true);
-        setError("Conexão demorou demais.");
+        setError(copy.timeout);
       } else {
-        setError("Falha ao conectar com BigMarsh.");
+        setError(copy.appLoadError);
       }
     } finally {
       if (silent) {
@@ -525,7 +538,7 @@ const Index = () => {
       getTelegramApp()?.HapticFeedback?.impactOccurred("light");
       setTimeout(() => setTapFx((prev) => prev.filter((f) => f.id !== fxId)), 900);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Não foi possível tapar agora.";
+      const msg = e instanceof Error ? e.message : copy.tapError;
       if (msg === "user_banned") {
         setAccountBlocked(true);
         setActionError(null);
@@ -548,7 +561,7 @@ const Index = () => {
       });
       await bootstrap({ silent: true });
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Falha ao comprar upgrade.";
+      const msg = e instanceof Error ? e.message : copy.upgradeError;
       if (msg === "user_banned") {
         setAccountBlocked(true);
         setActionError(null);
@@ -571,12 +584,12 @@ const Index = () => {
       });
       await bootstrap({ silent: true });
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Falha ao coletar task.";
+      const msg = e instanceof Error ? e.message : copy.taskClaimError;
       if (msg === "user_banned") {
         setAccountBlocked(true);
         setActionError(null);
       } else if (msg === "insufficient_balance") {
-        setActionError("Saldo insuficiente.");
+        setActionError(msg);
       } else {
         setActionError(msg);
       }
@@ -592,7 +605,7 @@ const Index = () => {
       setActionError(null);
       await navigator.clipboard.writeText(state.user.referral_link);
     } catch {
-      setActionError("Não foi possível copiar o link agora.");
+      setActionError(copy.copyError);
     } finally {
       setBusyAction(null);
     }
@@ -613,7 +626,7 @@ const Index = () => {
         window.open(`https://t.me/share/url?url=${encodeURIComponent(state.user.referral_link)}&text=${encodeURIComponent(copy.excitingShare)}`, "_blank", "noopener,noreferrer");
       }
     } catch {
-      setActionError("Não foi possível compartilhar agora.");
+      setActionError(copy.shareError);
     } finally {
       setBusyAction(null);
     }
@@ -630,12 +643,12 @@ const Index = () => {
       });
       await bootstrap({ silent: true });
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Falha ao coletar anúncio.";
+      const msg = e instanceof Error ? e.message : copy.adLoadError;
       if (msg === "user_banned") {
         setAccountBlocked(true);
         setActionError(null);
       } else if (msg === "ad_not_claimable_yet") {
-        setActionError("Esse anúncio acabou de ser usado. Aguarde o próximo ciclo automático.");
+        setActionError(copy.adCooldown);
       } else {
         setActionError(msg);
       }
@@ -647,7 +660,7 @@ const Index = () => {
   const connectWallet = async () => {
     const address = walletInput.trim();
     if (!address) {
-      setActionError("Informe o endereço da sua carteira TON.");
+      setActionError(copy.walletRequired);
       return;
     }
 
@@ -661,9 +674,9 @@ const Index = () => {
       });
       await bootstrap({ silent: true });
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Não foi possível conectar a carteira.";
+      const msg = e instanceof Error ? e.message : copy.walletConnectError;
       if (msg === "wallet_address_invalid") {
-        setActionError("Endereço de carteira inválido.");
+        setActionError(copy.walletInvalid);
       } else {
         setActionError(msg);
       }
@@ -693,11 +706,11 @@ const Index = () => {
         window.open(paymentUrl, "_blank", "noopener,noreferrer");
       }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Falha ao iniciar checkout.";
+      const msg = e instanceof Error ? e.message : copy.checkoutStartError;
       if (msg === "wallet_not_connected") {
-        setActionError("Conecte sua carteira antes de comprar um passe.");
+        setActionError(copy.buyPassNeedWallet);
       } else if (msg === "checkout_receiver_not_configured") {
-        setActionError("Checkout TON ainda não configurado no painel admin.");
+        setActionError(copy.checkoutNotConfigured);
       } else {
         setActionError(msg);
       }
@@ -721,9 +734,9 @@ const Index = () => {
       setTxHashInput("");
       await bootstrap({ silent: true });
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Falha ao confirmar compra.";
+      const msg = e instanceof Error ? e.message : copy.confirmError;
       if (msg === "purchase_expired") {
-        setActionError("Checkout expirou. Inicie a compra novamente.");
+        setActionError(copy.checkoutExpired);
         setPassCheckout(null);
       } else {
         setActionError(msg);
@@ -737,19 +750,37 @@ const Index = () => {
     if (task.completed) return;
 
     if (isAdTask(task)) {
+      const taskId = String(task.id);
+      if (adReadyToCollect[taskId]) {
+        if (taskId.startsWith("ad_slot_")) {
+          const slotNo = Number(taskId.replace("ad_slot_", ""));
+          if (Number.isFinite(slotNo) && slotNo >= 1 && slotNo <= 10) {
+            await claimAdSlot(slotNo);
+            setAdReadyToCollect((prev) => {
+              const next = { ...prev };
+              delete next[taskId];
+              return next;
+            });
+          } else {
+            setActionError(copy.invalidAdSlot);
+          }
+        }
+        return;
+      }
+
       if (!task.claimable) {
-        setActionError("Esse anúncio está em recarga. Tente em instantes.");
+        setActionError(copy.adCooldown);
         return;
       }
 
       const monetagSdk = await loadMonetagSdk();
       if (!monetagSdk) {
-        setActionError("Anúncio indisponível no momento.");
+        setActionError(copy.adUnavailable);
         return;
       }
 
       if (!getTelegramApp()) {
-        setActionError("Essas tarefas de anúncio só funcionam dentro do Telegram.");
+        setActionError(copy.adTelegramOnly);
         return;
       }
 
@@ -758,18 +789,10 @@ const Index = () => {
         setActionError(null);
 
         await monetagSdk();
-        if (String(task.id).startsWith("ad_slot_")) {
-          const slotNo = Number(String(task.id).replace("ad_slot_", ""));
-          if (Number.isFinite(slotNo) && slotNo >= 1 && slotNo <= 10) {
-            await claimAdSlot(slotNo);
-          } else {
-            setActionError("Slot de anúncio inválido.");
-          }
-        } else {
-          await claimTask(task.id);
-        }
+        setAdReadyToCollect((prev) => ({ ...prev, [taskId]: true }));
+        setActionError(copy.adCompletedCollect);
       } catch {
-        setActionError("Não foi possível carregar o anúncio agora.");
+        setActionError(copy.adLoadError);
       } finally {
         setBusyAction(null);
       }
@@ -785,7 +808,7 @@ const Index = () => {
     if (task.kind === "link_visit") {
       const rawUrl = String(task.link_url ?? "").trim();
       if (!rawUrl) {
-        setActionError("Link da tarefa não configurado.");
+        setActionError(copy.taskDestination);
         return;
       }
 
@@ -822,7 +845,7 @@ const Index = () => {
   }
 
   if (!state || error) {
-    return <main className="flex min-h-screen items-center justify-center text-destructive">{error ?? "Falha ao carregar"}</main>;
+      return <main className="flex min-h-screen items-center justify-center text-destructive">{error ?? copy.appLoadError}</main>;
   }
 
   if (accountBlocked) {
@@ -846,7 +869,7 @@ const Index = () => {
   return (
     <main className="mx-auto min-h-screen max-w-md px-4 pb-28 pt-4">
       <header className="mb-4 rounded-2xl border border-border/70 bg-card/80 p-4 shadow-glow">
-        <h1 className="text-2xl font-bold">BigMarsh - Tap to BMH</h1>
+        <h1 className="text-2xl font-bold">{copy.appTitle}</h1>
         <p className="text-sm text-muted-foreground">{state.airdrop_placeholder}</p>
         <div className="mt-2 flex items-center gap-2">
           {(["en", "pt", "es"] as const).map((lang) => (
@@ -870,13 +893,13 @@ const Index = () => {
         <div className="mt-2 h-3 overflow-hidden rounded-full bg-secondary">
           <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${(state.user.energy / state.user.max_energy) * 100}%` }} />
         </div>
-        <p className="mt-1 text-xs text-muted-foreground">{copy.energy} {state.user.energy}/{state.user.max_energy} · +1 in {state.user.next_regen_in}s</p>
+        <p className="mt-1 text-xs text-muted-foreground">{copy.energy} {state.user.energy}/{state.user.max_energy} · +1 {copy.inSeconds} {state.user.next_regen_in}s</p>
       </header>
 
       {activeTab === "tap" && (
         <section className="space-y-4">
           <Card className="relative overflow-hidden border-border/70 bg-card/85 p-6 text-center">
-            <p className="mb-3 text-xs uppercase tracking-wide text-muted-foreground">Combo ativo e haptics Telegram</p>
+            <p className="mb-3 text-xs uppercase tracking-wide text-muted-foreground">{copy.loadingAdHint}</p>
             <button onClick={onTap} className="relative mx-auto flex h-52 w-52 items-center justify-center rounded-full border border-primary/70 bg-secondary text-8xl shadow-glow transition-transform active:scale-95" aria-label="Tap no Marsh">
               🦊
               <span className="pointer-events-none absolute inset-0 rounded-full border border-primary/60 animate-pulseTap" />
@@ -890,6 +913,18 @@ const Index = () => {
           <Card className="border-border/70 bg-card/85 p-4 text-sm">
             <p>{copy.dailyStreak}: <span className="font-semibold text-primary">{state.user.daily_streak} {copy.days}</span></p>
             <p>{copy.totalTaps}: {state.user.total_taps.toLocaleString(numberLocale)}</p>
+            <p className="mt-3 text-xs text-muted-foreground">{copy.calendarTitle}</p>
+            <div className="mt-2 grid grid-cols-10 gap-1">
+              {Array.from({ length: 30 }).map((_, index) => {
+                const dayNo = index + 1;
+                const reached = dayNo <= state.user.daily_streak;
+                return (
+                  <span key={dayNo} className={`rounded px-1 py-0.5 text-center text-[10px] ${reached ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"}`}>
+                    {dayNo}
+                  </span>
+                );
+              })}
+            </div>
           </Card>
         </section>
       )}
@@ -902,9 +937,9 @@ const Index = () => {
                 <h2 className="font-semibold">{upgradeMeta[u.upgrade_type]?.title ?? u.upgrade_type.replace("_", " ")}</h2>
                 <span className="text-sm text-primary">Lv {u.level}</span>
               </div>
-              <p className="mb-3 text-xs text-muted-foreground">{upgradeMeta[u.upgrade_type]?.description ?? "Upgrade de progressão."}</p>
+              <p className="mb-3 text-xs text-muted-foreground">{upgradeMeta[u.upgrade_type]?.description[locale] ?? ""}</p>
               <Button className="w-full" disabled={busyAction !== null} onClick={() => buyUpgrade(u.upgrade_type)}>
-                Comprar ({u.next_cost.toLocaleString("pt-BR")} BMH)
+                {copy.upgradeBuy} ({u.next_cost.toLocaleString(numberLocale)} BMH)
               </Button>
             </Card>
           ))}
@@ -916,7 +951,7 @@ const Index = () => {
           <Card className="border-border/70 bg-card/85 p-4">
             <div className="mb-3 flex items-center justify-between">
               <div>
-                <h2 className="font-semibold">Conectar Wallet</h2>
+                <h2 className="font-semibold">{copy.connectWalletTitle}</h2>
                 <p className="text-xs text-muted-foreground">{copy.walletHint}</p>
               </div>
               <Wallet className="h-5 w-5 text-primary" />
@@ -934,11 +969,11 @@ const Index = () => {
           </Card>
           {(state.active_passes ?? []).length > 0 && (
             <Card className="border-border/70 bg-card/85 p-4">
-              <p className="mb-2 font-semibold">Passes ativos</p>
+              <p className="mb-2 font-semibold">{copy.activePasses}</p>
               <div className="space-y-1 text-xs">
                 {(state.active_passes ?? []).map((p) => (
                   <p key={`${p.pass_type}-${p.expires_at}`}>
-                    {p.pass_type === "weekly" ? "Semanal" : "Mensal"} ativo até {new Date(p.expires_at).toLocaleString("pt-BR")}
+                    {p.pass_type === "weekly" ? copy.weeklyPass : copy.monthlyPass} {copy.activeUntil} {new Date(p.expires_at).toLocaleString(numberLocale)}
                   </p>
                 ))}
               </div>
@@ -950,31 +985,31 @@ const Index = () => {
                 <h2 className="font-semibold">{pass.title}</h2>
                 <span className="text-sm text-primary">{Number(pass.price_ton ?? 0).toFixed(3)} TON</span>
               </div>
-              <p className="text-sm text-muted-foreground">Duração: {pass.duration_days} dia(s)</p>
+              <p className="text-sm text-muted-foreground">{copy.durationDays}: {pass.duration_days} {copy.days}</p>
               <p className="mt-1 text-sm text-muted-foreground">{pass.benefits}</p>
               <Button className="mt-3 w-full" disabled={busyAction !== null} onClick={() => void createPassCheckout(pass.pass_type)}>
-                Comprar agora
+                {copy.buyNow}
               </Button>
             </Card>
           ))}
           {passCheckout && (
             <Card className="border-border/70 bg-card/85 p-4">
-              <p className="font-semibold">Checkout iniciado</p>
-              <p className="mt-1 text-xs text-muted-foreground">Comentário da transferência: {passCheckout.payment_comment}</p>
+              <p className="font-semibold">{copy.checkoutStarted}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{copy.paymentComment}: {passCheckout.payment_comment}</p>
               <input
                 value={txHashInput}
                 onChange={(e) => setTxHashInput(e.target.value)}
                 className="mt-3 w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-                placeholder="Hash da transação (opcional)"
+                placeholder={copy.txHashPlaceholder}
               />
               <Button className="mt-2 w-full" disabled={busyAction !== null} onClick={() => void confirmPassCheckout()}>
-                Confirmar pagamento
+                {copy.confirmPayment}
               </Button>
             </Card>
           )}
           {(state.monetization_passes ?? []).length === 0 && (
             <Card className="border-border/70 bg-card/85 p-4 text-sm text-muted-foreground">
-              Nenhum passe disponível no momento.
+              {copy.noPasses}
             </Card>
           )}
         </section>
@@ -983,14 +1018,14 @@ const Index = () => {
       {activeTab === "referrals" && (
         <section className="space-y-3">
           <Card className="border-border/70 bg-card/85 p-4">
-            <p className="text-sm text-muted-foreground">Link único</p>
+            <p className="text-sm text-muted-foreground">{copy.uniqueLink}</p>
             <p className="mt-1 break-all text-sm">{state.user.referral_link}</p>
             <div className="mt-3 grid grid-cols-2 gap-2">
               <Button variant="secondary" disabled={busyAction !== null} onClick={copyReferralLink}>{copy.copyLink}</Button>
               <Button disabled={busyAction !== null} onClick={shareReferralLink}>{copy.share}</Button>
             </div>
             <Button className="mt-2 w-full" variant="outline" disabled={busyAction !== null} onClick={() => setActiveTab("passes")}>
-              {copy.goToWallet}
+              {copy.goConnectWallet}
             </Button>
           </Card>
           <Card className="border-border/70 bg-card/85 p-4">
@@ -998,8 +1033,8 @@ const Index = () => {
             <div className="space-y-2 text-sm">
               {state.referrals.map((r) => (
                 <div key={r.telegram_id} className="flex items-center justify-between rounded-lg bg-secondary/70 px-3 py-2">
-                  <span>{r.first_name ?? r.username ?? `#${r.telegram_id}`}</span>
-                  <span className="text-primary">+5% eterno</span>
+                  <span>{r.first_name ?? r.username ?? `#${r.telegram_id}`} · {new Date(r.created_at).toLocaleDateString(numberLocale)}</span>
+                  <span className="text-primary">{copy.inviteBonus}</span>
                 </div>
               ))}
               {state.referrals.length === 0 && <p className="text-muted-foreground">{copy.noReferredFriends}</p>}
@@ -1012,9 +1047,9 @@ const Index = () => {
         <section className="space-y-3">
           <div className="grid grid-cols-3 gap-2">
             {([
-              ["all_time", "All-Time"],
-              ["weekly", "Weekly"],
-              ["friends", "Friends"],
+              ["all_time", copy.allTime],
+              ["weekly", copy.weekly],
+              ["friends", copy.friends],
             ] as const).map(([key, label]) => (
               <Button key={key} variant={lbScope === key ? "default" : "secondary"} onClick={() => setLbScope(key)}>
                 {label}
@@ -1041,12 +1076,22 @@ const Index = () => {
               <h2 className="font-semibold">{task.title}</h2>
               <p className="text-sm text-muted-foreground">{task.description}</p>
               {task.kind === "link_visit" && task.link_url && (
-                <p className="mt-1 break-all text-xs text-muted-foreground">Destino: {task.link_url}</p>
+                <p className="mt-1 break-all text-xs text-muted-foreground">{copy.taskDestination}: {task.link_url}</p>
               )}
               <div className="mt-3 flex items-center justify-between">
                  <span className="text-primary">+{task.reward_bmh.toLocaleString(numberLocale)} BMH</span>
                 <Button disabled={task.completed || busyAction !== null} onClick={() => void handleTaskAction(task)}>
-                  {task.completed ? "Concluída" : task.kind === "link_visit" ? "Abrir link" : task.claimable ? "Coletar" : "Fazer tarefa"}
+                  {task.completed
+                    ? copy.completed
+                    : isAdTask(task)
+                      ? adReadyToCollect[String(task.id)]
+                        ? copy.collect
+                        : copy.watchAd
+                      : task.kind === "link_visit"
+                        ? copy.openLink
+                        : task.claimable
+                          ? copy.collect
+                          : copy.doTask}
                 </Button>
               </div>
             </Card>
@@ -1065,7 +1110,7 @@ const Index = () => {
               className={`rounded-xl px-2 py-2 text-[10px] transition ${isActive ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground"}`}
             >
               <Icon className="mx-auto mb-1 h-4 w-4" />
-              {tab.label}
+              {tabLabels[tab.key]}
             </button>
           );
         })}
