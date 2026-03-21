@@ -38,7 +38,7 @@ export type GameState = {
     created_at: string;
   }>;
   upgrades: Array<{
-    upgrade_type: "marsh_factory" | "viral_boost" | "referral_multiplier";
+    upgrade_type: "marsh_factory" | "viral_boost" | "referral_multiplier" | "energy_core" | "precision_tap";
     level: number;
     next_cost: number;
   }>;
