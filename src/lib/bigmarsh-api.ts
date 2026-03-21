@@ -29,7 +29,7 @@ export type GameState = {
     claimable?: boolean;
     target_value?: number;
     link_url?: string | null;
-    kind: "taps_500" | "invite_1" | "watch_ad" | "ad_watch" | "link_visit";
+    kind: "taps_500" | "invite_1" | "watch_ad" | "ad_watch" | "link_visit" | "weekly_bmh" | "weekly_invite";
   }>;
   referrals: Array<{
     telegram_id: number;

@@ -166,18 +166,21 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          notified_at: string | null
           referred_id: number
           referrer_id: number
         }
         Insert: {
           created_at?: string
           id?: string
+          notified_at?: string | null
           referred_id: number
           referrer_id: number
         }
         Update: {
           created_at?: string
           id?: string
+          notified_at?: string | null
           referred_id?: number
           referrer_id?: number
         }
@@ -703,6 +706,8 @@ export type Database = {
         | "watch_ad"
         | "ad_watch"
         | "link_visit"
+        | "weekly_bmh"
+        | "weekly_invite"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -832,7 +837,15 @@ export const Constants = {
     Enums: {
       app_role: ["admin", "moderator", "user"],
       purchase_status: ["pending", "paid", "expired", "failed"],
-      task_kind: ["taps_500", "invite_1", "watch_ad", "ad_watch", "link_visit"],
+      task_kind: [
+        "taps_500",
+        "invite_1",
+        "watch_ad",
+        "ad_watch",
+        "link_visit",
+        "weekly_bmh",
+        "weekly_invite",
+      ],
     },
   },
 } as const

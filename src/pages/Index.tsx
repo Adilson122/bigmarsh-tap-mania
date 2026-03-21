@@ -57,6 +57,8 @@ const isAdTask = (task: GameState["tasks"][number]) => {
 
 type MonetagShow = () => Promise<unknown>;
 
+type Locale = "en" | "pt" | "es";
+
 const MONETAG_SCRIPT_ID = "bigmarsh-monetag-sdk";
 const MONETAG_SCRIPT_SRC = "https://libtl.com/sdk.js";
 
@@ -99,6 +101,87 @@ const upgradeMeta: Record<GameState["upgrades"][number]["upgrade_type"], { title
   precision_tap: { title: "Precision Tap", description: "Aumenta precisão do tap e ganho total por ação." },
 };
 
+const messages: Record<Locale, Record<string, string>> = {
+  en: {
+    connecting: "Connecting BigMarsh...",
+    syncing: "Syncing your Telegram account.",
+    timeout: "Connection timed out.",
+    retry: "Try again",
+    blockedTitle: "Your account is temporarily blocked",
+    blockedSubtitle: "No worries: your progress is safe. Contact support/admin for review.",
+    accountStatus: "Account status",
+    blocked: "Blocked",
+    level: "Level",
+    energy: "Energy",
+    connectWallet: "Connect Wallet",
+    walletHint: "Link your TON address to buy passes and join airdrops.",
+    walletPlaceholder: "Paste your TON address",
+    updateWallet: "Update wallet",
+    linkedWallet: "Connected",
+    copyLink: "Copy link",
+    share: "Share",
+    referredFriends: "Referred friends",
+    noReferredFriends: "No invited friends yet.",
+    goToWallet: "Go connect wallet",
+    dailyStreak: "Daily streak",
+    days: "days",
+    totalTaps: "Total taps",
+    excitingShare: "🚀 I just started farming BMH on BigMarsh! Fast taps, ad boosts, weekly missions and TON passes. Join me now and claim your starter bonus!",
+  },
+  pt: {
+    connecting: "Conectando BigMarsh...",
+    syncing: "Sincronizando sua conta no Telegram.",
+    timeout: "A conexão expirou.",
+    retry: "Tentar novamente",
+    blockedTitle: "Sua conta está temporariamente bloqueada",
+    blockedSubtitle: "Não se preocupe: seus dados foram preservados. Entre em contato com o suporte/admin para revisão.",
+    accountStatus: "Status da conta",
+    blocked: "Bloqueada",
+    level: "Nível",
+    energy: "Energia",
+    connectWallet: "Conectar Wallet",
+    walletHint: "Vincule seu endereço TON para comprar passes e participar do airdrop.",
+    walletPlaceholder: "Cole seu endereço TON",
+    updateWallet: "Atualizar carteira",
+    linkedWallet: "Conectada",
+    copyLink: "Copiar link",
+    share: "Compartilhar",
+    referredFriends: "Amigos indicados",
+    noReferredFriends: "Nenhum convidado ainda.",
+    goToWallet: "Ir para conectar carteira",
+    dailyStreak: "Streak diário",
+    days: "dias",
+    totalTaps: "Taps totais",
+    excitingShare: "🚀 Entrei no BigMarsh e já estou farmando BMH! Tap rápido, boost por anúncios, missões semanais e passes TON. Entra comigo agora e pega seu bônus inicial!",
+  },
+  es: {
+    connecting: "Conectando BigMarsh...",
+    syncing: "Sincronizando tu cuenta de Telegram.",
+    timeout: "La conexión expiró.",
+    retry: "Reintentar",
+    blockedTitle: "Tu cuenta está bloqueada temporalmente",
+    blockedSubtitle: "Tranquilo: tu progreso está guardado. Contacta al soporte/admin para revisión.",
+    accountStatus: "Estado de la cuenta",
+    blocked: "Bloqueada",
+    level: "Nivel",
+    energy: "Energía",
+    connectWallet: "Conectar Wallet",
+    walletHint: "Vincula tu dirección TON para comprar pases y entrar al airdrop.",
+    walletPlaceholder: "Pega tu dirección TON",
+    updateWallet: "Actualizar billetera",
+    linkedWallet: "Conectada",
+    copyLink: "Copiar enlace",
+    share: "Compartir",
+    referredFriends: "Amigos referidos",
+    noReferredFriends: "Aún no hay amigos invitados.",
+    goToWallet: "Ir a conectar billetera",
+    dailyStreak: "Racha diaria",
+    days: "días",
+    totalTaps: "Taps totales",
+    excitingShare: "🚀 ¡Ya empecé a farmear BMH en BigMarsh! Taps rápidos, boosts de anuncios, misiones semanales y pases TON. ¡Únete ahora y reclama tu bono inicial!",
+  },
+};
+
 const Index = () => {
   const [state, setState] = useState<GameState | null>(null);
   const [isBootstrapping, setIsBootstrapping] = useState(true);
@@ -118,9 +201,19 @@ const Index = () => {
   const [walletInput, setWalletInput] = useState("");
   const [passCheckout, setPassCheckout] = useState<PassCheckout | null>(null);
   const [txHashInput, setTxHashInput] = useState("");
+  const [locale, setLocale] = useState<Locale>(() => {
+    const saved = localStorage.getItem("bigmarsh_locale");
+    return saved === "pt" || saved === "es" || saved === "en" ? saved : "en";
+  });
 
   const telegramUser = useMemo(() => getTelegramUser(), []);
   const initData = getTelegramApp()?.initData ?? "";
+  const copy = messages[locale];
+  const numberLocale = locale === "pt" ? "pt-BR" : locale === "es" ? "es-ES" : "en-US";
+
+  useEffect(() => {
+    localStorage.setItem("bigmarsh_locale", locale);
+  }, [locale]);
 
   const bootstrap = async ({ silent = false }: { silent?: boolean } = {}) => {
     const requestStartedAt = Date.now();
@@ -310,11 +403,11 @@ const Index = () => {
       if (navigator.share) {
         await navigator.share({
           title: "BigMarsh",
-          text: "Vem jogar BigMarsh comigo!",
+          text: copy.excitingShare,
           url: state.user.referral_link,
         });
       } else {
-        window.open(`https://t.me/share/url?url=${encodeURIComponent(state.user.referral_link)}&text=${encodeURIComponent("Vem jogar BigMarsh comigo!")}`, "_blank", "noopener,noreferrer");
+        window.open(`https://t.me/share/url?url=${encodeURIComponent(state.user.referral_link)}&text=${encodeURIComponent(copy.excitingShare)}`, "_blank", "noopener,noreferrer");
       }
     } catch {
       setActionError("Não foi possível compartilhar agora.");
@@ -499,7 +592,7 @@ const Index = () => {
       return;
     }
 
-    if (task.kind === "invite_1") {
+    if (task.kind === "invite_1" || task.kind === "weekly_invite") {
       setActiveTab("referrals");
       return;
     }
@@ -511,13 +604,13 @@ const Index = () => {
     return (
       <main className="flex min-h-screen items-center justify-center px-6">
         <div className="w-full max-w-sm rounded-2xl border border-border/70 bg-card/85 p-5 text-center">
-          <p className="text-base font-medium text-foreground">Conectando BigMarsh...</p>
+          <p className="text-base font-medium text-foreground">{copy.connecting}</p>
           <p className="mt-2 text-sm text-muted-foreground">
-            {timedOut ? "A conexão expirou." : "Sincronizando sua conta no Telegram."}
+            {timedOut ? copy.timeout : copy.syncing}
           </p>
           {(timedOut || error) && (
             <Button className="mt-4 w-full" onClick={() => bootstrap({ silent: false })}>
-              Tentar novamente
+              {copy.retry}
             </Button>
           )}
         </div>
@@ -534,15 +627,13 @@ const Index = () => {
       <main className="mx-auto flex min-h-screen w-full max-w-md items-center px-4">
         <Card className="w-full border-border/70 bg-card/85 p-5">
           <div className="mb-4 rounded-xl bg-secondary/60 px-3 py-2 text-xs">
-            <span className="text-muted-foreground">Status da conta: </span>
-            <span className="font-semibold text-destructive">Bloqueada</span>
+             <span className="text-muted-foreground">{copy.accountStatus}: </span>
+             <span className="font-semibold text-destructive">{copy.blocked}</span>
           </div>
-          <h1 className="text-lg font-semibold">Sua conta está temporariamente bloqueada</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Não se preocupe: seus dados foram preservados. Entre em contato com o suporte/admin para revisão.
-          </p>
+          <h1 className="text-lg font-semibold">{copy.blockedTitle}</h1>
+          <p className="mt-2 text-sm text-muted-foreground">{copy.blockedSubtitle}</p>
           <Button className="mt-4 w-full" onClick={() => bootstrap({ silent: false })}>
-            Tentar novamente
+            {copy.retry}
           </Button>
         </Card>
       </main>
@@ -554,15 +645,29 @@ const Index = () => {
       <header className="mb-4 rounded-2xl border border-border/70 bg-card/80 p-4 shadow-glow">
         <h1 className="text-2xl font-bold">BigMarsh - Tap to BMH</h1>
         <p className="text-sm text-muted-foreground">{state.airdrop_placeholder}</p>
+        <div className="mt-2 flex items-center gap-2">
+          {(["en", "pt", "es"] as const).map((lang) => (
+            <Button
+              key={lang}
+              type="button"
+              size="sm"
+              variant={locale === lang ? "default" : "secondary"}
+              onClick={() => setLocale(lang)}
+              className="h-7 px-2 text-xs uppercase"
+            >
+              {lang}
+            </Button>
+          ))}
+        </div>
         {actionError && <p className="mt-2 text-xs text-destructive">{actionError}</p>}
         <div className="mt-3 flex items-center justify-between text-sm">
-          <span>Nível {state.user.level}</span>
-          <span className="font-semibold text-primary">{state.user.bmh_balance.toLocaleString("pt-BR")} BMH</span>
+          <span>{copy.level} {state.user.level}</span>
+          <span className="font-semibold text-primary">{state.user.bmh_balance.toLocaleString(numberLocale)} BMH</span>
         </div>
         <div className="mt-2 h-3 overflow-hidden rounded-full bg-secondary">
           <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${(state.user.energy / state.user.max_energy) * 100}%` }} />
         </div>
-        <p className="mt-1 text-xs text-muted-foreground">Energia {state.user.energy}/{state.user.max_energy} · +1 em {state.user.next_regen_in}s</p>
+        <p className="mt-1 text-xs text-muted-foreground">{copy.energy} {state.user.energy}/{state.user.max_energy} · +1 in {state.user.next_regen_in}s</p>
       </header>
 
       {activeTab === "tap" && (
@@ -580,8 +685,8 @@ const Index = () => {
             ))}
           </Card>
           <Card className="border-border/70 bg-card/85 p-4 text-sm">
-            <p>Streak diário: <span className="font-semibold text-primary">{state.user.daily_streak} dias</span></p>
-            <p>Taps totais: {state.user.total_taps.toLocaleString("pt-BR")}</p>
+            <p>{copy.dailyStreak}: <span className="font-semibold text-primary">{state.user.daily_streak} {copy.days}</span></p>
+            <p>{copy.totalTaps}: {state.user.total_taps.toLocaleString(numberLocale)}</p>
           </Card>
         </section>
       )}
@@ -609,7 +714,7 @@ const Index = () => {
             <div className="mb-3 flex items-center justify-between">
               <div>
                 <h2 className="font-semibold">Conectar Wallet</h2>
-                <p className="text-xs text-muted-foreground">Vincule seu endereço TON para comprar passes e participar do airdrop.</p>
+                <p className="text-xs text-muted-foreground">{copy.walletHint}</p>
               </div>
               <Wallet className="h-5 w-5 text-primary" />
             </div>
@@ -617,12 +722,12 @@ const Index = () => {
               value={walletInput}
               onChange={(e) => setWalletInput(e.target.value)}
               className="mb-2 w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-              placeholder="Cole seu endereço TON"
+              placeholder={copy.walletPlaceholder}
             />
             <Button className="w-full" variant="outline" disabled={busyAction !== null} onClick={() => void connectWallet()}>
-              {state.user.wallet_address ? "Atualizar carteira" : "Conectar carteira"}
+              {state.user.wallet_address ? copy.updateWallet : copy.connectWallet}
             </Button>
-            {state.user.wallet_address && <p className="mt-2 break-all text-xs text-muted-foreground">Conectada: {state.user.wallet_address}</p>}
+            {state.user.wallet_address && <p className="mt-2 break-all text-xs text-muted-foreground">{copy.linkedWallet}: {state.user.wallet_address}</p>}
           </Card>
           {(state.active_passes ?? []).length > 0 && (
             <Card className="border-border/70 bg-card/85 p-4">
@@ -678,15 +783,15 @@ const Index = () => {
             <p className="text-sm text-muted-foreground">Link único</p>
             <p className="mt-1 break-all text-sm">{state.user.referral_link}</p>
             <div className="mt-3 grid grid-cols-2 gap-2">
-              <Button variant="secondary" disabled={busyAction !== null} onClick={copyReferralLink}>Copiar link</Button>
-              <Button disabled={busyAction !== null} onClick={shareReferralLink}>Compartilhar</Button>
+              <Button variant="secondary" disabled={busyAction !== null} onClick={copyReferralLink}>{copy.copyLink}</Button>
+              <Button disabled={busyAction !== null} onClick={shareReferralLink}>{copy.share}</Button>
             </div>
             <Button className="mt-2 w-full" variant="outline" disabled={busyAction !== null} onClick={() => setActiveTab("passes")}>
-              Ir para conectar carteira
+              {copy.goToWallet}
             </Button>
           </Card>
           <Card className="border-border/70 bg-card/85 p-4">
-            <p className="mb-2 font-semibold">Amigos indicados ({state.referrals.length})</p>
+            <p className="mb-2 font-semibold">{copy.referredFriends} ({state.referrals.length})</p>
             <div className="space-y-2 text-sm">
               {state.referrals.map((r) => (
                 <div key={r.telegram_id} className="flex items-center justify-between rounded-lg bg-secondary/70 px-3 py-2">
@@ -694,7 +799,7 @@ const Index = () => {
                   <span className="text-primary">+5% eterno</span>
                 </div>
               ))}
-              {state.referrals.length === 0 && <p className="text-muted-foreground">Nenhum convidado ainda.</p>}
+              {state.referrals.length === 0 && <p className="text-muted-foreground">{copy.noReferredFriends}</p>}
             </div>
           </Card>
         </section>
@@ -718,7 +823,7 @@ const Index = () => {
               {leaderboard.map((row) => (
                 <div key={row.telegram_id} className="flex items-center justify-between rounded-lg bg-secondary/70 px-3 py-2 text-sm">
                   <span>#{row.rank_no} {row.first_name ?? row.username ?? row.telegram_id}</span>
-                  <span className="font-semibold text-primary">{(lbScope === "weekly" ? row.weekly_bmh : row.bmh_balance).toLocaleString("pt-BR")} BMH</span>
+                   <span className="font-semibold text-primary">{(lbScope === "weekly" ? row.weekly_bmh : row.bmh_balance).toLocaleString(numberLocale)} BMH</span>
                 </div>
               ))}
             </div>
@@ -736,7 +841,7 @@ const Index = () => {
                 <p className="mt-1 break-all text-xs text-muted-foreground">Destino: {task.link_url}</p>
               )}
               <div className="mt-3 flex items-center justify-between">
-                <span className="text-primary">+{task.reward_bmh.toLocaleString("pt-BR")} BMH</span>
+                 <span className="text-primary">+{task.reward_bmh.toLocaleString(numberLocale)} BMH</span>
                 <Button disabled={task.completed || busyAction !== null} onClick={() => void handleTaskAction(task)}>
                   {task.completed ? "Concluída" : task.kind === "link_visit" ? "Abrir link" : task.claimable ? "Coletar" : "Fazer tarefa"}
                 </Button>
