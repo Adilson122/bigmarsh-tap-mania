@@ -410,13 +410,13 @@ Deno.serve(async (req) => {
           db.from("referrals").select("id,referrer_id,referred_id,created_at").order("created_at", { ascending: false }).limit(100),
           db.from("users").select("telegram_id,daily_streak,referrals_count").or("daily_streak.gt.7,referrals_count.gt.5").limit(500),
           db.from("users").select("telegram_id", { count: "exact", head: true }),
-          db.from("users").select("telegram_id", { count: "exact", head: true }).or("telegram_id.gte.900000,username.ilike.%ref_master%,username.ilike.%new_marsh%,username.ilike.%dev%"),
+          db.from("users").select("telegram_id", { count: "exact", head: true }).eq("is_fake", true),
           db.from("monetization_passes").select("pass_type,title,duration_days,price_usd,price_ton,benefits,is_visible,is_enabled,sort_order").order("sort_order", { ascending: true }),
           db.from("task_settings").select("referral_goal,referral_reward_bmh,tap_goal,tap_reward_bmh").eq("id", 1).maybeSingle(),
           db.from("app_settings").select("ton_receiver_address").eq("id", 1).maybeSingle(),
         ]);
 
-        let usersQuery = db.from("users").select("telegram_id,username,first_name,bmh_balance,energy,level,daily_streak,referrals_count,is_banned").order("created_at", { ascending: false }).limit(100);
+        let usersQuery = db.from("users").select("telegram_id,username,first_name,bmh_balance,energy,level,daily_streak,referrals_count,is_banned,is_fake").order("created_at", { ascending: false }).limit(100);
         if (query.trim()) {
           usersQuery = usersQuery.or(`username.ilike.%${query}%,first_name.ilike.%${query}%`);
         }
