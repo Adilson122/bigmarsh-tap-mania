@@ -333,6 +333,7 @@ Deno.serve(async (req) => {
         const defaultTarget = kind === "invite_1" || kind === "link_visit" ? 1 : 300;
         const target = Math.max(TASK_TARGET_MIN, Math.min(TASK_TARGET_MAX, Number(body.targetValue ?? defaultTarget)));
         const normalizedLink = kind === "link_visit" ? String(body.linkUrl ?? "").trim() || null : null;
+        if (kind === "link_visit" && !normalizedLink) throw new Error("link_url_required");
 
         const activeDate = new Date().toISOString().slice(0, 10);
         const payload = {
@@ -345,24 +346,8 @@ Deno.serve(async (req) => {
           active_date: activeDate,
         };
 
-        const { data: existingTask, error: existingTaskError } = await db
-          .from("tasks")
-          .select("id")
-          .eq("kind", kind)
-          .eq("active_date", activeDate)
-          .order("created_at", { ascending: true })
-          .limit(1)
-          .maybeSingle();
-
-        if (existingTaskError) throw new Error(existingTaskError.message);
-
-        if (existingTask?.id) {
-          const { error: updateTaskError } = await db.from("tasks").update(payload).eq("id", existingTask.id);
-          if (updateTaskError) throw new Error(updateTaskError.message);
-        } else {
-          const { error: insertTaskError } = await db.from("tasks").insert(payload);
-          if (insertTaskError) throw new Error(insertTaskError.message);
-        }
+        const { error: insertTaskError } = await db.from("tasks").insert(payload);
+        if (insertTaskError) throw new Error(insertTaskError.message);
         return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
