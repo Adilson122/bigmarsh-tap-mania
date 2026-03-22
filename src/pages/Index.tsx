@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Trophy, Zap, Users, ListChecks, ArrowUpCircle, Sparkles, Wallet } from "lucide-react";
-import { TonConnectButton, useTonAddress, useTonConnectUI, useTonWallet } from "@tonconnect/ui-react";
+import { useTonAddress, useTonConnectUI, useTonWallet } from "@tonconnect/ui-react";
 import { callBigMarsh, type GameState } from "@/lib/bigmarsh-api";
 import { getStartParam, getTelegramApp, getTelegramUser, setupTelegram } from "@/lib/telegram";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { WalletConnectButton } from "@/components/wallet/WalletConnectButton";
+import { WalletStatusDisplay } from "@/components/wallet/WalletStatusDisplay";
 
 type LeaderboardRow = {
   rank_no: number;
@@ -180,6 +182,9 @@ const messages: Record<Locale, Record<string, string>> = {
     level: "Level",
     energy: "Energy",
     connectWallet: "Connect Wallet",
+    disconnectWallet: "Disconnect",
+    disconnected: "Disconnected",
+    connectingWallet: "Connecting...",
     walletHint: "Link your TON address to buy passes and join airdrops.",
     walletHintTonConnect: "Use TON Connect to link your wallet securely in-app.",
     walletPlaceholder: "Paste your TON address",
@@ -269,6 +274,9 @@ const messages: Record<Locale, Record<string, string>> = {
     level: "Nível",
     energy: "Energia",
     connectWallet: "Conectar Wallet",
+    disconnectWallet: "Desconectar",
+    disconnected: "Desconectada",
+    connectingWallet: "Conectando...",
     walletHint: "Vincule seu endereço TON para comprar passes e participar do airdrop.",
     walletHintTonConnect: "Use o TON Connect para vincular sua carteira com segurança no app.",
     walletPlaceholder: "Cole seu endereço TON",
@@ -358,6 +366,9 @@ const messages: Record<Locale, Record<string, string>> = {
     level: "Nivel",
     energy: "Energía",
     connectWallet: "Conectar Wallet",
+    disconnectWallet: "Desconectar",
+    disconnected: "Desconectada",
+    connectingWallet: "Conectando...",
     walletHint: "Vincula tu dirección TON para comprar pases y entrar al airdrop.",
     walletHintTonConnect: "Usa TON Connect para vincular tu billetera de forma segura dentro de la app.",
     walletPlaceholder: "Pega tu dirección TON",
@@ -1064,12 +1075,21 @@ const Index = () => {
               </div>
               <Wallet className="h-5 w-5 text-primary" />
             </div>
-            <div className="mb-2 [&>button]:!w-full [&>button]:!max-w-none">
-              <TonConnectButton className="!w-full" />
+            <WalletConnectButton
+              connectLabel={copy.connectWallet}
+              connectedLabel={copy.linkedWallet}
+              disconnectLabel={copy.disconnectWallet}
+              connectingLabel={copy.connectingWallet}
+            />
+            <div className="mt-2">
+              <WalletStatusDisplay
+                connected={Boolean(tonWallet)}
+                statusConnectedLabel={copy.linkedWallet}
+                statusDisconnectedLabel={copy.disconnected}
+                addressLabel={copy.linkedWallet}
+                address={tonRawAddress || undefined}
+              />
             </div>
-            <Button className="w-full" variant="outline" disabled={busyAction !== null} onClick={() => void tonConnectUI.openModal()}>
-              {copy.openWalletPicker}
-            </Button>
             {tonWallet && !isTonWalletLinked && (
               <Button className="mt-2 w-full" disabled={busyAction !== null} onClick={() => void connectWalletWithTonConnect()}>
                 {copy.verifyAndLink}
