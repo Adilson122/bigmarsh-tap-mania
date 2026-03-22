@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Trophy, Zap, Users, ListChecks, ArrowUpCircle, Sparkles, Wallet } from "lucide-react";
+import { TonConnectButton, useTonAddress, useTonConnectUI, useTonWallet } from "@tonconnect/ui-react";
 import { callBigMarsh, type GameState } from "@/lib/bigmarsh-api";
 import { getStartParam, getTelegramApp, getTelegramUser, setupTelegram } from "@/lib/telegram";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,14 @@ type PassCheckout = {
   recipient_address: string;
   payment_comment: string;
   expires_at: string;
+};
+
+type WalletSignature = {
+  signature: string;
+  address: string;
+  timestamp: number;
+  domain: string;
+  payload: unknown;
 };
 
 const tabs: Array<{ key: TabKey; icon: typeof Zap }> = [
@@ -172,9 +181,14 @@ const messages: Record<Locale, Record<string, string>> = {
     energy: "Energy",
     connectWallet: "Connect Wallet",
     walletHint: "Link your TON address to buy passes and join airdrops.",
+    walletHintTonConnect: "Use TON Connect to link your wallet securely in-app.",
     walletPlaceholder: "Paste your TON address",
     updateWallet: "Update wallet",
     linkedWallet: "Connected",
+    verifyAndLink: "Verify & link wallet",
+    openWalletPicker: "Open wallet picker",
+    walletSignatureError: "Your wallet did not sign the verification request.",
+    walletConnectedNotLinked: "Wallet connected. Finish verification to link it with your account.",
     copyLink: "Copy link",
     share: "Share",
     referredFriends: "Referred friends",
@@ -256,9 +270,14 @@ const messages: Record<Locale, Record<string, string>> = {
     energy: "Energia",
     connectWallet: "Conectar Wallet",
     walletHint: "Vincule seu endereço TON para comprar passes e participar do airdrop.",
+    walletHintTonConnect: "Use o TON Connect para vincular sua carteira com segurança no app.",
     walletPlaceholder: "Cole seu endereço TON",
     updateWallet: "Atualizar carteira",
     linkedWallet: "Conectada",
+    verifyAndLink: "Verificar e vincular",
+    openWalletPicker: "Abrir seletor de carteira",
+    walletSignatureError: "Sua carteira não assinou a solicitação de verificação.",
+    walletConnectedNotLinked: "Carteira conectada. Finalize a verificação para vincular à sua conta.",
     copyLink: "Copiar link",
     share: "Compartilhar",
     referredFriends: "Amigos indicados",
@@ -340,9 +359,14 @@ const messages: Record<Locale, Record<string, string>> = {
     energy: "Energía",
     connectWallet: "Conectar Wallet",
     walletHint: "Vincula tu dirección TON para comprar pases y entrar al airdrop.",
+    walletHintTonConnect: "Usa TON Connect para vincular tu billetera de forma segura dentro de la app.",
     walletPlaceholder: "Pega tu dirección TON",
     updateWallet: "Actualizar billetera",
     linkedWallet: "Conectada",
+    verifyAndLink: "Verificar y vincular",
+    openWalletPicker: "Abrir selector de billetera",
+    walletSignatureError: "Tu billetera no firmó la solicitud de verificación.",
+    walletConnectedNotLinked: "Billetera conectada. Completa la verificación para vincularla con tu cuenta.",
     copyLink: "Copiar enlace",
     share: "Compartir",
     referredFriends: "Amigos referidos",
@@ -422,7 +446,6 @@ const Index = () => {
   const [busyAction, setBusyAction] = useState<"tap" | "upgrade" | "task" | "referral_copy" | "referral_share" | "wallet" | "pass_checkout" | "pass_confirm" | null>(null);
   const [timedOut, setTimedOut] = useState(false);
   const [accountBlocked, setAccountBlocked] = useState(false);
-  const [walletInput, setWalletInput] = useState("");
   const [passCheckout, setPassCheckout] = useState<PassCheckout | null>(null);
   const [txHashInput, setTxHashInput] = useState("");
   const [adReadyToCollect, setAdReadyToCollect] = useState<Record<string, true>>({});
@@ -432,6 +455,9 @@ const Index = () => {
   });
 
   const telegramUser = useMemo(() => getTelegramUser(), []);
+  const [tonConnectUI] = useTonConnectUI();
+  const tonWallet = useTonWallet();
+  const tonRawAddress = useTonAddress(false);
   const initData = getTelegramApp()?.initData ?? "";
   const copy = messages[locale];
   const numberLocale = locale === "pt" ? "pt-BR" : locale === "es" ? "es-ES" : "en-US";
@@ -538,11 +564,6 @@ const Index = () => {
   useEffect(() => {
     if (activeTab === "leaderboard") loadLeaderboard();
   }, [activeTab, lbScope]);
-
-  useEffect(() => {
-    if (!state?.user.wallet_address) return;
-    setWalletInput(state.user.wallet_address);
-  }, [state?.user.wallet_address]);
 
   const onTap = async () => {
     if (!state || state.user.energy <= 0) return;
@@ -678,8 +699,9 @@ const Index = () => {
     }
   };
 
-  const connectWallet = async () => {
-    const address = normalizeWalletAddressInput(walletInput);
+  const connectWalletWithTonConnect = async () => {
+    if (!state) return;
+    const address = normalizeWalletAddressInput(tonRawAddress);
     if (!address) {
       setActionError(copy.walletRequired);
       return;
@@ -688,17 +710,37 @@ const Index = () => {
     try {
       setBusyAction("wallet");
       setActionError(null);
+
+      let signaturePayload: WalletSignature | null = null;
+      try {
+        const signed = await tonConnectUI.signData({
+          type: "text",
+          text: `BigMarsh wallet verification\nUser: ${state.user.telegram_id}\nTimestamp: ${new Date().toISOString()}`,
+        });
+        signaturePayload = {
+          signature: signed.signature,
+          address: signed.address,
+          timestamp: signed.timestamp,
+          domain: signed.domain,
+          payload: signed.payload,
+        };
+      } catch {
+        throw new Error("wallet_signature_required");
+      }
+
       await callBigMarsh("connect_wallet", {
         initData,
         walletAddress: address,
+        walletSignature: signaturePayload,
         debugUser: telegramUser ?? { id: 777001, first_name: "Dev", username: "bigmarsh_dev" },
       });
-      setWalletInput(address);
       await bootstrap({ silent: true });
     } catch (e) {
       const msg = e instanceof Error ? e.message : copy.walletConnectError;
       if (msg === "wallet_address_invalid") {
         setActionError(copy.walletInvalid);
+      } else if (msg === "wallet_signature_required") {
+        setActionError(copy.walletSignatureError);
       } else {
         setActionError(msg);
       }
@@ -706,6 +748,8 @@ const Index = () => {
       setBusyAction(null);
     }
   };
+
+  const isTonWalletLinked = Boolean(state?.user.wallet_address && tonRawAddress && normalizeWalletAddressInput(state.user.wallet_address) === normalizeWalletAddressInput(tonRawAddress));
 
   const createPassCheckout = async (passType: "weekly" | "monthly") => {
     try {
@@ -1016,19 +1060,21 @@ const Index = () => {
             <div className="mb-3 flex items-center justify-between">
               <div>
                 <h2 className="font-semibold">{copy.connectWalletTitle}</h2>
-                <p className="text-xs text-muted-foreground">{copy.walletHint}</p>
+                <p className="text-xs text-muted-foreground">{copy.walletHintTonConnect}</p>
               </div>
               <Wallet className="h-5 w-5 text-primary" />
             </div>
-            <input
-              value={walletInput}
-              onChange={(e) => setWalletInput(e.target.value)}
-              className="mb-2 w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-              placeholder={copy.walletPlaceholder}
-            />
-            <Button className="w-full" variant="outline" disabled={busyAction !== null} onClick={() => void connectWallet()}>
-              {state.user.wallet_address ? copy.updateWallet : copy.connectWallet}
+            <div className="mb-2 [&>button]:!w-full [&>button]:!max-w-none">
+              <TonConnectButton className="!w-full" />
+            </div>
+            <Button className="w-full" variant="outline" disabled={busyAction !== null} onClick={() => void tonConnectUI.openModal()}>
+              {copy.openWalletPicker}
             </Button>
+            {tonWallet && !isTonWalletLinked && (
+              <Button className="mt-2 w-full" disabled={busyAction !== null} onClick={() => void connectWalletWithTonConnect()}>
+                {copy.verifyAndLink}
+              </Button>
+            )}
             <Button
               className="mt-2 w-full"
               variant="secondary"
@@ -1041,6 +1087,7 @@ const Index = () => {
             >
               {copy.openTelegramWallet}
             </Button>
+            {tonWallet && !isTonWalletLinked && <p className="mt-2 text-xs text-muted-foreground">{copy.walletConnectedNotLinked}</p>}
             {state.user.wallet_address && <p className="mt-2 break-all text-xs text-muted-foreground">{copy.linkedWallet}: {state.user.wallet_address}</p>}
           </Card>
           {(state.active_passes ?? []).length > 0 && (
