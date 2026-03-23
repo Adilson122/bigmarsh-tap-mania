@@ -480,9 +480,8 @@ const Index = () => {
   const [busyAction, setBusyAction] = useState<"tap" | "upgrade" | "task" | "referral_copy" | "referral_share" | "wallet" | "pass_checkout" | "pass_confirm" | null>(null);
   const [timedOut, setTimedOut] = useState(false);
   const [accountBlocked, setAccountBlocked] = useState(false);
-  const [passCheckout, setPassCheckout] = useState<PassCheckout | null>(null);
-  const [txHashInput, setTxHashInput] = useState("");
   const [adReadyToCollect, setAdReadyToCollect] = useState<Record<string, true>>({});
+  const [paymentMarkedAsPaid, setPaymentMarkedAsPaid] = useState(false);
   const [locale, setLocale] = useState<Locale>(() => {
     const saved = localStorage.getItem("bigmarsh_locale");
     return saved === "pt" || saved === "es" || saved === "en" ? saved : "en";
