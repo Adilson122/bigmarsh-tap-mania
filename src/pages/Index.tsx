@@ -38,6 +38,8 @@ type WalletSignature = {
   payload: unknown;
 };
 
+type BuyPassType = "weekly" | "monthly";
+
 const tabs: Array<{ key: TabKey; icon: typeof Zap }> = [
   { key: "tap", icon: Zap },
   { key: "upgrades", icon: ArrowUpCircle },
