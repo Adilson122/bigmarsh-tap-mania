@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useTonConnectUI, useTonWallet } from "@tonconnect/ui-react";
 import { CheckCircle2, Loader2 } from "lucide-react";
-import { beginCell } from "@ton/core";
 import { Button } from "@/components/ui/button";
 
 type BuyPassButtonProps = {
@@ -19,7 +18,16 @@ type BuyPassButtonProps = {
 };
 
 const createCommentPayload = (comment: string) => {
-  return beginCell().storeUint(0, 32).storeStringTail(comment).endCell().toBoc().toString("base64");
+  const textBytes = new TextEncoder().encode(comment);
+  const bytes = new Uint8Array(4 + textBytes.length);
+  bytes.set(textBytes, 4);
+
+  let binary = "";
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+
+  return btoa(binary);
 };
 
 export const BuyPassButton = ({
