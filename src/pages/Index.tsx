@@ -784,7 +784,7 @@ const Index = () => {
 
   const isTonWalletLinked = Boolean(state?.user.wallet_address && tonRawAddress && normalizeWalletAddressInput(state.user.wallet_address) === normalizeWalletAddressInput(tonRawAddress));
 
-  const createPassCheckout = async (passType: "weekly" | "monthly") => {
+  const createPassCheckout = async (passType: BuyPassType) => {
     try {
       setBusyAction("pass_checkout");
       setActionError(null);
@@ -793,17 +793,7 @@ const Index = () => {
         passType,
         debugUser: telegramUser ?? { id: 777001, first_name: "Dev", username: "bigmarsh_dev" },
       });
-
-      setPassCheckout(data.checkout);
-      setTxHashInput("");
-
-      const paymentUrl = `ton://transfer/${encodeURIComponent(data.checkout.recipient_address)}?amount=${data.checkout.amount_nano}&text=${encodeURIComponent(data.checkout.payment_comment)}`;
-      const tg = getTelegramApp();
-      if (tg?.openLink) {
-        tg.openLink(paymentUrl, { try_instant_view: false });
-      } else {
-        window.open(paymentUrl, "_blank", "noopener,noreferrer");
-      }
+      return data.checkout;
     } catch (e) {
       const msg = e instanceof Error ? e.message : copy.checkoutStartError;
       if (msg === "wallet_not_connected") {
@@ -813,33 +803,33 @@ const Index = () => {
       } else {
         setActionError(msg);
       }
+      throw e;
     } finally {
       setBusyAction(null);
     }
   };
 
-  const confirmPassCheckout = async () => {
-    if (!passCheckout) return;
+  const confirmPassCheckout = async (purchaseId: string, txHash: string | null) => {
     try {
       setBusyAction("pass_confirm");
       setActionError(null);
       await callBigMarsh("confirm_pass_checkout", {
         initData,
-        purchaseId: passCheckout.purchase_id,
-        txHash: txHashInput.trim() || null,
+        purchaseId,
+        txHash,
         debugUser: telegramUser ?? { id: 777001, first_name: "Dev", username: "bigmarsh_dev" },
       });
-      setPassCheckout(null);
-      setTxHashInput("");
+      setPaymentMarkedAsPaid(true);
+      setActionError(copy.paymentSuccess);
       await bootstrap({ silent: true });
     } catch (e) {
       const msg = e instanceof Error ? e.message : copy.confirmError;
       if (msg === "purchase_expired") {
         setActionError(copy.checkoutExpired);
-        setPassCheckout(null);
       } else {
         setActionError(msg);
       }
+      throw e;
     } finally {
       setBusyAction(null);
     }
@@ -1007,6 +997,8 @@ const Index = () => {
     );
   }
 
+  const hasPaidPass = paymentMarkedAsPaid || (state.active_passes ?? []).length > 0;
+
   return (
     <main className="mx-auto min-h-screen max-w-md px-4 pb-28 pt-4">
       <header className="mb-4 rounded-2xl border border-border/70 bg-card/80 p-4 shadow-glow">
@@ -1110,6 +1102,10 @@ const Index = () => {
                 statusDisconnectedLabel={copy.disconnected}
                 addressLabel={copy.linkedWallet}
                 address={tonRawAddress || undefined}
+                paymentLabel={copy.paymentStatus}
+                paymentPaidLabel={copy.paid}
+                paymentPendingLabel={copy.unpaid}
+                paid={hasPaidPass}
               />
             </div>
             {tonWallet && !isTonWalletLinked && (
@@ -1152,26 +1148,29 @@ const Index = () => {
               </div>
               <p className="text-sm text-muted-foreground">{copy.durationDays}: {pass.duration_days} {copy.days}</p>
               <p className="mt-1 text-sm text-muted-foreground">{pass.benefits}</p>
-              <Button className="mt-3 w-full" disabled={busyAction !== null} onClick={() => void createPassCheckout(pass.pass_type)}>
-                {copy.buyNow}
-              </Button>
+              <BuyPassButton
+                amountNano={Math.round(Number(pass.price_ton ?? 0) * 1_000_000_000)}
+                recipient={TON_PASS_RECEIVER}
+                comment={TON_PASS_COMMENT}
+                label={copy.buyPass}
+                connectingLabel={copy.connectingWallet}
+                processingLabel={copy.paymentProcessing}
+                successLabel={copy.paymentSuccess}
+                disabled={busyAction !== null}
+                onPreparePayment={async () => {
+                  const checkout = await createPassCheckout(pass.pass_type as BuyPassType);
+                  return { purchaseId: checkout.purchase_id };
+                }}
+                onConfirmPayment={async ({ purchaseId, txRef }) => {
+                  await confirmPassCheckout(purchaseId, txRef);
+                }}
+                onError={(error) => {
+                  const msg = error instanceof Error ? error.message : copy.confirmError;
+                  setActionError(msg || copy.confirmError);
+                }}
+              />
             </Card>
           ))}
-          {passCheckout && (
-            <Card className="border-border/70 bg-card/85 p-4">
-              <p className="font-semibold">{copy.checkoutStarted}</p>
-              <p className="mt-1 text-xs text-muted-foreground">{copy.paymentComment}: {passCheckout.payment_comment}</p>
-              <input
-                value={txHashInput}
-                onChange={(e) => setTxHashInput(e.target.value)}
-                className="mt-3 w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-                placeholder={copy.txHashPlaceholder}
-              />
-              <Button className="mt-2 w-full" disabled={busyAction !== null} onClick={() => void confirmPassCheckout()}>
-                {copy.confirmPayment}
-              </Button>
-            </Card>
-          )}
           {(state.monetization_passes ?? []).length === 0 && (
             <Card className="border-border/70 bg-card/85 p-4 text-sm text-muted-foreground">
               {copy.noPasses}
