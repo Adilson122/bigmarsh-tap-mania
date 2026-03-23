@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { WalletConnectButton } from "@/components/wallet/WalletConnectButton";
 import { WalletStatusDisplay } from "@/components/wallet/WalletStatusDisplay";
+import { BuyPassButton } from "@/components/wallet/BuyPassButton";
 
 type LeaderboardRow = {
   rank_no: number;
@@ -47,6 +48,8 @@ const tabs: Array<{ key: TabKey; icon: typeof Zap }> = [
 ];
 
 const BOOT_TIMEOUT_MS = 8000;
+const TON_PASS_RECEIVER = "UQDtR-mDIsrdfG1PVtn9CZHY1BDqJspdPa-ND-XxqcrLAcMd";
+const TON_PASS_COMMENT = "Compra de passe do Mini App";
 
 const withTimeout = async <T,>(promise: Promise<T>, ms: number): Promise<T> => {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
