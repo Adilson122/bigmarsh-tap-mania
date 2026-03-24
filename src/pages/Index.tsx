@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Trophy, Zap, Users, ListChecks, ArrowUpCircle, Sparkles, Wallet } from "lucide-react";
 import { useTonAddress, useTonConnectUI, useTonWallet } from "@tonconnect/ui-react";
 import { callBigMarsh, type GameState } from "@/lib/bigmarsh-api";
@@ -482,6 +482,7 @@ const Index = () => {
   const [accountBlocked, setAccountBlocked] = useState(false);
   const [adReadyToCollect, setAdReadyToCollect] = useState<Record<string, true>>({});
   const [paymentMarkedAsPaid, setPaymentMarkedAsPaid] = useState(false);
+  const silentRefreshInFlight = useRef(false);
   const [locale, setLocale] = useState<Locale>(() => {
     const saved = localStorage.getItem("bigmarsh_locale");
     return saved === "pt" || saved === "es" || saved === "en" ? saved : "en";
@@ -587,11 +588,37 @@ const Index = () => {
 
   useEffect(() => {
     if (!state) return;
-    const timer = setInterval(() => {
-      if (busyAction) return;
-      bootstrap({ silent: true });
-    }, 3000);
-    return () => clearInterval(timer);
+
+    let disposed = false;
+    let timerId: number | null = null;
+
+    const schedule = () => {
+      if (disposed) return;
+
+      timerId = window.setTimeout(async () => {
+        if (disposed) return;
+
+        if (busyAction || silentRefreshInFlight.current || document.visibilityState !== "visible") {
+          schedule();
+          return;
+        }
+
+        try {
+          silentRefreshInFlight.current = true;
+          await bootstrap({ silent: true });
+        } finally {
+          silentRefreshInFlight.current = false;
+          schedule();
+        }
+      }, 6500);
+    };
+
+    schedule();
+
+    return () => {
+      disposed = true;
+      if (timerId !== null) window.clearTimeout(timerId);
+    };
   }, [state?.user.telegram_id, busyAction]);
 
   useEffect(() => {
@@ -599,18 +626,21 @@ const Index = () => {
   }, [activeTab, lbScope]);
 
   const onTap = async () => {
-    if (!state || state.user.energy <= 0) return;
+    if (!state || state.user.energy <= 0 || busyAction === "tap") return;
     const fxId = Date.now();
     try {
       setBusyAction("tap");
       setActionError(null);
+      setTapFx((prev) => [...prev, { id: fxId, value: 0, x: Math.floor(Math.random() * 120 - 60) }]);
+      getTelegramApp()?.HapticFeedback?.impactOccurred("light");
+
       const data = await callBigMarsh<{ tap: { earned_bmh: number }; state: GameState }>("tap", {
         initData,
         debugUser: telegramUser ?? { id: 777001, first_name: "Dev", username: "bigmarsh_dev" },
       });
+
       setState(data.state);
-      setTapFx((prev) => [...prev, { id: fxId, value: data.tap.earned_bmh, x: Math.floor(Math.random() * 120 - 60) }]);
-      getTelegramApp()?.HapticFeedback?.impactOccurred("light");
+      setTapFx((prev) => prev.map((f) => (f.id === fxId ? { ...f, value: data.tap.earned_bmh } : f)));
       setTimeout(() => setTapFx((prev) => prev.filter((f) => f.id !== fxId)), 900);
     } catch (e) {
       const msg = e instanceof Error ? e.message : copy.tapError;
@@ -1033,9 +1063,15 @@ const Index = () => {
         <section className="space-y-4">
           <Card className="relative overflow-hidden border-border/70 bg-card/85 p-6 text-center">
             <p className="mb-3 text-xs uppercase tracking-wide text-muted-foreground">{copy.loadingAdHint}</p>
-            <button onClick={onTap} className="relative mx-auto flex h-52 w-52 items-center justify-center rounded-full border border-primary/70 bg-secondary text-8xl shadow-glow transition-transform active:scale-95" aria-label="Tap no Marsh">
-              🦊
+            <button
+              onClick={onTap}
+              className="relative mx-auto flex h-52 w-52 items-center justify-center rounded-full border border-primary/70 bg-secondary text-8xl shadow-glow transition-transform active:scale-95"
+              style={{ transform: "perspective(900px) rotateX(8deg)" }}
+              aria-label="Tap no Marsh"
+            >
+              <span className="animate-float" style={{ transform: "translateZ(24px)" }}>🐉</span>
               <span className="pointer-events-none absolute inset-0 rounded-full border border-primary/60 animate-pulseTap" />
+              <span className="pointer-events-none absolute inset-4 rounded-full border border-primary/40" />
             </button>
             {tapFx.map((f) => (
               <span key={f.id} className="pointer-events-none absolute left-1/2 top-20 animate-rise text-lg font-bold text-primary" style={{ transform: `translateX(${f.x}px)` }}>
@@ -1166,6 +1202,11 @@ const Index = () => {
                 }}
                 onError={(error) => {
                   const msg = error instanceof Error ? error.message : copy.confirmError;
+                  if (msg.includes("TON_CONNECT_SDK_ERROR") || msg.includes("Invalid 'payload'")) {
+                    setActionError(copy.checkoutStartError);
+                    return;
+                  }
+
                   setActionError(msg || copy.confirmError);
                 }}
               />
