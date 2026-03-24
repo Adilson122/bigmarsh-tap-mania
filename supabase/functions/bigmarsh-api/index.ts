@@ -17,6 +17,7 @@ const TASK_REWARD_MAX = 2000;
 const TASK_TARGET_MIN = 1;
 const TASK_TARGET_MAX = 2500;
 const MANUAL_TASK_KINDS = new Set(["taps_500", "invite_1", "link_visit"]);
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const db = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
 
@@ -113,10 +114,21 @@ const sendTelegramMessage = async (chatId: number, text: string, replyMarkup?: R
   }
 };
 
-const sendWelcomeMessage = async (chatId: number) => {
-  const welcome = "🌿 <b>Welcome to BigMarsh!</b>\nTap start and begin farming BMH now.";
+const sendWelcomeMessage = async (chatId: number, firstName?: string | null) => {
+  const safeName = String(firstName ?? "Player").replace(/[<>]/g, "").slice(0, 40);
+  const welcome = `🌿 <b>Welcome to BigMarsh, ${safeName}!</b>\n\n⚡ Tap to earn BMH\n🎯 Complete missions\n💎 Unlock premium passes\n\nPress <b>Start</b> and jump into the game now!`;
   await sendTelegramMessage(chatId, welcome, {
-    inline_keyboard: [[{ text: "Start", url: `https://t.me/${botUsername}/app` }]],
+    inline_keyboard: [[{ text: "▶️ Start BigMarsh", url: `https://t.me/${botUsername}/app` }]],
+  });
+};
+
+const sendPromoMessage = async (chatId: number, text: string) => {
+  const cleanText = text.trim();
+  if (!cleanText) throw new Error("message_text_required");
+
+  const payload = `📣 <b>BigMarsh Update</b>\n\n${cleanText}\n\n⚡ Tap in now and keep climbing the leaderboard!`;
+  await sendTelegramMessage(chatId, payload, {
+    inline_keyboard: [[{ text: "🚀 Open BigMarsh", url: `https://t.me/${botUsername}/app` }]],
   });
 };
 
@@ -177,7 +189,7 @@ Deno.serve(async (req) => {
     const initData = body.initData as string | undefined;
     const debugUser = body.debugUser;
 
-    if (["init", "tap", "buy_upgrade", "claim_task", "claim_ad_slot", "leaderboard", "connect_wallet", "create_pass_checkout", "confirm_pass_checkout", "admin_login", "admin_dashboard", "admin_update_user", "admin_create_task", "admin_delete_task", "admin_save_task_settings", "admin_save_pass", "admin_save_app_settings"].includes(action)) {
+    if (["init", "tap", "buy_upgrade", "claim_task", "claim_ad_slot", "leaderboard", "connect_wallet", "create_pass_checkout", "confirm_pass_checkout", "admin_login", "admin_dashboard", "admin_update_user", "admin_create_task", "admin_delete_task", "admin_save_task_settings", "admin_save_pass", "admin_save_app_settings", "admin_send_broadcast", "admin_send_message"].includes(action)) {
       const tgUser = await verifyInitData(initData, debugUser);
       const telegramId = Number(tgUser.id);
 
@@ -209,7 +221,7 @@ Deno.serve(async (req) => {
           const congratulations = `🎉 <b>Congratulations!</b>\nYou just invited <b>${inviterName}</b> to BigMarsh.\nKeep inviting friends to climb the ranking and earn more BMH!`;
 
           try {
-            await sendWelcomeMessage(telegramId);
+            await sendWelcomeMessage(telegramId, tgUser.first_name ?? tgUser.username ?? null);
             await sendTelegramMessage(Number(pendingReferral.referrer_id), congratulations);
             await db.from("referrals").update({ notified_at: new Date().toISOString() }).eq("id", pendingReferral.id);
           } catch (notifyError) {
@@ -311,8 +323,55 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify({ token }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
-      if (["admin_dashboard", "admin_update_user", "admin_create_task", "admin_delete_task", "admin_save_task_settings", "admin_save_pass", "admin_save_app_settings"].includes(action)) {
+      if (["admin_dashboard", "admin_update_user", "admin_create_task", "admin_delete_task", "admin_save_task_settings", "admin_save_pass", "admin_save_app_settings", "admin_send_broadcast", "admin_send_message"].includes(action)) {
         await requireAdmin(String(body.adminToken ?? ""));
+      }
+
+      if (action === "admin_send_message") {
+        const telegramId = Number(body.telegramId ?? 0);
+        const text = String(body.text ?? "").trim();
+        if (!Number.isFinite(telegramId) || telegramId <= 0) throw new Error("telegram_id_invalid");
+        if (!text) throw new Error("message_text_required");
+
+        await sendPromoMessage(telegramId, text);
+        return new Response(JSON.stringify({ ok: true, sent: 1, failed: 0 }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      if (action === "admin_send_broadcast") {
+        const text = String(body.text ?? "").trim();
+        const maxUsers = Math.max(1, Math.min(1000, Number(body.limit ?? 250)));
+        if (!text) throw new Error("message_text_required");
+
+        const { data: users, error: usersError } = await db
+          .from("users")
+          .select("telegram_id")
+          .eq("is_banned", false)
+          .order("created_at", { ascending: false })
+          .limit(maxUsers);
+
+        if (usersError) throw new Error(usersError.message);
+
+        let sent = 0;
+        let failed = 0;
+
+        for (const user of users ?? []) {
+          try {
+            await sendPromoMessage(Number(user.telegram_id), text);
+            sent += 1;
+          } catch {
+            failed += 1;
+          }
+
+          if ((sent + failed) % 20 === 0) {
+            await sleep(350);
+          }
+        }
+
+        return new Response(JSON.stringify({ ok: true, sent, failed, total: (users ?? []).length }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
 
       if (action === "admin_update_user") {
