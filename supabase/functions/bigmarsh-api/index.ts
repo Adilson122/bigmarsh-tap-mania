@@ -333,10 +333,17 @@ Deno.serve(async (req) => {
         if (!Number.isFinite(telegramId) || telegramId <= 0) throw new Error("telegram_id_invalid");
         if (!text) throw new Error("message_text_required");
 
-        await sendPromoMessage(telegramId, text);
-        return new Response(JSON.stringify({ ok: true, sent: 1, failed: 0 }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        try {
+          await sendPromoMessage(telegramId, text);
+          return new Response(JSON.stringify({ ok: true, sent: 1, failed: 0 }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        } catch {
+          return new Response(JSON.stringify({ ok: true, sent: 0, failed: 1 }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
       }
 
       if (action === "admin_send_broadcast") {
