@@ -98,6 +98,12 @@ const Admin = () => {
   const [broadcastLimit, setBroadcastLimit] = useState(250);
   const [directMessageUserId, setDirectMessageUserId] = useState("");
   const [directMessageText, setDirectMessageText] = useState("");
+  const [directMessagePhotoUrl, setDirectMessagePhotoUrl] = useState("");
+  const [directMessageButtonText, setDirectMessageButtonText] = useState("Open Big Marsh");
+  const [directMessageButtonUrl, setDirectMessageButtonUrl] = useState("");
+  const [broadcastPhotoUrl, setBroadcastPhotoUrl] = useState("");
+  const [broadcastButtonText, setBroadcastButtonText] = useState("Open Big Marsh");
+  const [broadcastButtonUrl, setBroadcastButtonUrl] = useState("");
   const [messageResult, setMessageResult] = useState<string | null>(null);
 
   const isLikelyFakeUser = (u: AdminUser) => Boolean(u.is_fake);
@@ -588,6 +594,21 @@ const Admin = () => {
               value={directMessageText}
               onChange={(e) => setDirectMessageText(e.target.value)}
             />
+            <Input
+              placeholder="URL da foto (opcional)"
+              value={directMessagePhotoUrl}
+              onChange={(e) => setDirectMessagePhotoUrl(e.target.value)}
+            />
+            <Input
+              placeholder="Texto do botão (opcional)"
+              value={directMessageButtonText}
+              onChange={(e) => setDirectMessageButtonText(e.target.value)}
+            />
+            <Input
+              placeholder="Link do botão (opcional)"
+              value={directMessageButtonUrl}
+              onChange={(e) => setDirectMessageButtonUrl(e.target.value)}
+            />
             <Button
               disabled={loadingAction !== null}
               onClick={async () => {
@@ -599,6 +620,9 @@ const Admin = () => {
                     adminToken: token,
                     telegramId: Number(directMessageUserId),
                     text: directMessageText,
+                    photoUrl: directMessagePhotoUrl,
+                    buttonText: directMessageButtonText,
+                    buttonUrl: directMessageButtonUrl,
                     initData,
                     debugUser,
                   });
@@ -627,6 +651,21 @@ const Admin = () => {
               value={broadcastLimit}
               onChange={(e) => setBroadcastLimit(Number(e.target.value))}
             />
+            <Input
+              placeholder="URL da foto (opcional)"
+              value={broadcastPhotoUrl}
+              onChange={(e) => setBroadcastPhotoUrl(e.target.value)}
+            />
+            <Input
+              placeholder="Texto do botão (opcional)"
+              value={broadcastButtonText}
+              onChange={(e) => setBroadcastButtonText(e.target.value)}
+            />
+            <Input
+              placeholder="Link do botão (opcional)"
+              value={broadcastButtonUrl}
+              onChange={(e) => setBroadcastButtonUrl(e.target.value)}
+            />
             <Button
               disabled={loadingAction !== null}
               onClick={async () => {
@@ -638,6 +677,9 @@ const Admin = () => {
                     adminToken: token,
                     text: broadcastText,
                     limit: broadcastLimit,
+                    photoUrl: broadcastPhotoUrl,
+                    buttonText: broadcastButtonText,
+                    buttonUrl: broadcastButtonUrl,
                     initData,
                     debugUser,
                   });
