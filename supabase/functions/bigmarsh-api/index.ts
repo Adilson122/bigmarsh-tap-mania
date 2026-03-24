@@ -114,22 +114,93 @@ const sendTelegramMessage = async (chatId: number, text: string, replyMarkup?: R
   }
 };
 
-const sendWelcomeMessage = async (chatId: number, firstName?: string | null) => {
+const sendTelegramPhoto = async (chatId: number, photoUrl: string, caption: string, replyMarkup?: Record<string, unknown>) => {
+  const response = await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      photo: photoUrl,
+      caption,
+      parse_mode: "HTML",
+      ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
+    }),
+  });
+
+  if (!response.ok) {
+    const payload = await response.text();
+    throw new Error(`telegram_send_photo_failed:${response.status}:${payload}`);
+  }
+};
+
+const makeOpenAppUrl = (startParam?: string | null) => {
+  const clean = String(startParam ?? "").trim();
+  return clean
+    ? `https://t.me/${botUsername}/app?startapp=${encodeURIComponent(clean)}`
+    : `https://t.me/${botUsername}/app`;
+};
+
+const sendWelcomeMessage = async (chatId: number, firstName?: string | null, startParam?: string | null) => {
   const safeName = String(firstName ?? "Player").replace(/[<>]/g, "").slice(0, 40);
-  const welcome = `🌿 <b>Welcome to BigMarsh, ${safeName}!</b>\n\n⚡ Tap to earn BMH\n🎯 Complete missions\n💎 Unlock premium passes\n\nPress <b>Start</b> and jump into the game now!`;
+  const welcome = `🌿 <b>Welcome to BigMarsh, ${safeName}!</b>\n\n⚡ Tap to earn BMH\n🎯 Complete missions\n💎 Unlock premium passes\n\nPress <b>Play</b> to open the game and start now!`;
   await sendTelegramMessage(chatId, welcome, {
-    inline_keyboard: [[{ text: "▶️ Start BigMarsh", url: `https://t.me/${botUsername}/app` }]],
+    inline_keyboard: [[{ text: "▶️ Play BigMarsh", url: makeOpenAppUrl(startParam) }]],
   });
 };
 
-const sendPromoMessage = async (chatId: number, text: string) => {
+const normalizeOptionalUrl = (rawValue?: string | null) => {
+  const raw = String(rawValue ?? "").trim();
+  if (!raw) return null;
+  if (/^https?:\/\//i.test(raw) || /^tg:\/\//i.test(raw)) return raw;
+  return `https://${raw}`;
+};
+
+const sendPromoMessage = async (
+  chatId: number,
+  text: string,
+  options?: {
+    photoUrl?: string | null;
+    buttonText?: string | null;
+    buttonUrl?: string | null;
+  },
+) => {
   const cleanText = text.trim();
   if (!cleanText) throw new Error("message_text_required");
 
+  const buttonUrl = normalizeOptionalUrl(options?.buttonUrl);
+  const buttonText = String(options?.buttonText ?? "").trim() || "🚀 Open BigMarsh";
+  const photoUrl = normalizeOptionalUrl(options?.photoUrl);
+
+  const replyMarkup = buttonUrl
+    ? {
+        inline_keyboard: [[{ text: buttonText, url: buttonUrl }]],
+      }
+    : undefined;
+
   const payload = `📣 <b>BigMarsh Update</b>\n\n${cleanText}\n\n⚡ Tap in now and keep climbing the leaderboard!`;
-  await sendTelegramMessage(chatId, payload, {
-    inline_keyboard: [[{ text: "🚀 Open BigMarsh", url: `https://t.me/${botUsername}/app` }]],
-  });
+  if (photoUrl) {
+    await sendTelegramPhoto(chatId, photoUrl, payload, replyMarkup);
+    return;
+  }
+
+  await sendTelegramMessage(chatId, payload, replyMarkup);
+};
+
+const handleTelegramBotUpdate = async (payload: any) => {
+  const message = payload?.message;
+  const chatId = Number(message?.chat?.id ?? 0);
+  const text = String(message?.text ?? "").trim();
+
+  if (!Number.isFinite(chatId) || chatId <= 0 || !text.startsWith("/start")) {
+    return { ok: true, ignored: true };
+  }
+
+  const parts = text.split(/\s+/);
+  const rawStartParam = parts.length > 1 ? parts.slice(1).join(" ") : "";
+  const safeStartParam = rawStartParam && /^ref_[0-9]+$/i.test(rawStartParam) ? rawStartParam : null;
+  await sendWelcomeMessage(chatId, message?.from?.first_name ?? "Player", safeStartParam);
+
+  return { ok: true };
 };
 
 const hmac = async (keyRaw: string | Uint8Array, value: string) => {
@@ -185,6 +256,14 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json();
+
+    if (body?.update_id && body?.message) {
+      const result = await handleTelegramBotUpdate(body);
+      return new Response(JSON.stringify(result), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const action = body.action as string;
     const initData = body.initData as string | undefined;
     const debugUser = body.debugUser;
@@ -330,11 +409,14 @@ Deno.serve(async (req) => {
       if (action === "admin_send_message") {
         const telegramId = Number(body.telegramId ?? 0);
         const text = String(body.text ?? "").trim();
+        const photoUrl = String(body.photoUrl ?? "").trim() || null;
+        const buttonText = String(body.buttonText ?? "").trim() || null;
+        const buttonUrl = String(body.buttonUrl ?? "").trim() || null;
         if (!Number.isFinite(telegramId) || telegramId <= 0) throw new Error("telegram_id_invalid");
         if (!text) throw new Error("message_text_required");
 
         try {
-          await sendPromoMessage(telegramId, text);
+          await sendPromoMessage(telegramId, text, { photoUrl, buttonText, buttonUrl });
           return new Response(JSON.stringify({ ok: true, sent: 1, failed: 0 }), {
             headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
@@ -348,6 +430,9 @@ Deno.serve(async (req) => {
 
       if (action === "admin_send_broadcast") {
         const text = String(body.text ?? "").trim();
+        const photoUrl = String(body.photoUrl ?? "").trim() || null;
+        const buttonText = String(body.buttonText ?? "").trim() || null;
+        const buttonUrl = String(body.buttonUrl ?? "").trim() || null;
         const maxUsers = Math.max(1, Math.min(1000, Number(body.limit ?? 250)));
         if (!text) throw new Error("message_text_required");
 
@@ -365,7 +450,7 @@ Deno.serve(async (req) => {
 
         for (const user of users ?? []) {
           try {
-            await sendPromoMessage(Number(user.telegram_id), text);
+            await sendPromoMessage(Number(user.telegram_id), text, { photoUrl, buttonText, buttonUrl });
             sent += 1;
           } catch {
             failed += 1;
