@@ -59,7 +59,7 @@ type AppSettings = {
   ton_receiver_address: string;
 };
 
-type AdminTab = "real" | "fake" | "tasks" | "monetization" | "referrals" | "airdrop";
+type AdminTab = "real" | "fake" | "tasks" | "monetization" | "referrals" | "airdrop" | "messaging";
 
 const Admin = () => {
   const initData = getTelegramApp()?.initData ?? "";
@@ -94,6 +94,11 @@ const Admin = () => {
   const [panelSyncAt, setPanelSyncAt] = useState<Date | null>(null);
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [panelError, setPanelError] = useState<string | null>(null);
+  const [broadcastText, setBroadcastText] = useState("");
+  const [broadcastLimit, setBroadcastLimit] = useState(250);
+  const [directMessageUserId, setDirectMessageUserId] = useState("");
+  const [directMessageText, setDirectMessageText] = useState("");
+  const [messageResult, setMessageResult] = useState<string | null>(null);
 
   const isLikelyFakeUser = (u: AdminUser) => Boolean(u.is_fake);
 
@@ -245,6 +250,7 @@ const Admin = () => {
           <Button variant={activeTab === "monetization" ? "default" : "secondary"} onClick={() => setActiveTab("monetization")}>Monetização</Button>
           <Button variant={activeTab === "referrals" ? "default" : "secondary"} onClick={() => setActiveTab("referrals")}>Referrals</Button>
           <Button variant={activeTab === "airdrop" ? "default" : "secondary"} onClick={() => setActiveTab("airdrop")}>Airdrop</Button>
+          <Button variant={activeTab === "messaging" ? "default" : "secondary"} onClick={() => setActiveTab("messaging")}>Mensagens</Button>
         </div>
       </Card>
 
@@ -565,6 +571,89 @@ const Admin = () => {
               <div key={u.telegram_id} className="rounded-lg bg-secondary/80 px-3 py-2">{u.telegram_id} · streak {u.daily_streak} · refs {u.referrals_count}</div>
             ))}
           </div>
+        </Card>
+      )}
+
+      {activeTab === "messaging" && (
+        <Card className="border-border/70 bg-card/85 p-4 space-y-4">
+          <div className="rounded-lg bg-secondary/70 p-3 space-y-2">
+            <p className="font-semibold">Enviar mensagem para um usuário</p>
+            <Input
+              placeholder="Telegram ID do usuário"
+              value={directMessageUserId}
+              onChange={(e) => setDirectMessageUserId(e.target.value)}
+            />
+            <Input
+              placeholder="Mensagem promocional"
+              value={directMessageText}
+              onChange={(e) => setDirectMessageText(e.target.value)}
+            />
+            <Button
+              disabled={loadingAction !== null}
+              onClick={async () => {
+                try {
+                  setLoadingAction("send-dm");
+                  setPanelError(null);
+                  setMessageResult(null);
+                  const result = await callBigMarsh<{ sent: number; failed: number }>("admin_send_message", {
+                    adminToken: token,
+                    telegramId: Number(directMessageUserId),
+                    text: directMessageText,
+                    initData,
+                    debugUser,
+                  });
+                  setMessageResult(`Mensagem enviada: ${result.sent} · falhas: ${result.failed}`);
+                } catch (e) {
+                  setPanelError(e instanceof Error ? e.message : "Erro ao enviar mensagem individual");
+                } finally {
+                  setLoadingAction(null);
+                }
+              }}
+            >
+              Enviar mensagem individual
+            </Button>
+          </div>
+
+          <div className="rounded-lg bg-secondary/70 p-3 space-y-2">
+            <p className="font-semibold">Broadcast promocional</p>
+            <Input
+              placeholder="Mensagem para todos"
+              value={broadcastText}
+              onChange={(e) => setBroadcastText(e.target.value)}
+            />
+            <Input
+              type="number"
+              placeholder="Limite de usuários"
+              value={broadcastLimit}
+              onChange={(e) => setBroadcastLimit(Number(e.target.value))}
+            />
+            <Button
+              disabled={loadingAction !== null}
+              onClick={async () => {
+                try {
+                  setLoadingAction("send-broadcast");
+                  setPanelError(null);
+                  setMessageResult(null);
+                  const result = await callBigMarsh<{ sent: number; failed: number; total: number }>("admin_send_broadcast", {
+                    adminToken: token,
+                    text: broadcastText,
+                    limit: broadcastLimit,
+                    initData,
+                    debugUser,
+                  });
+                  setMessageResult(`Broadcast concluído: enviados ${result.sent}/${result.total} · falhas ${result.failed}`);
+                } catch (e) {
+                  setPanelError(e instanceof Error ? e.message : "Erro ao enviar broadcast");
+                } finally {
+                  setLoadingAction(null);
+                }
+              }}
+            >
+              Enviar broadcast
+            </Button>
+          </div>
+
+          {messageResult && <p className="text-xs text-primary">{messageResult}</p>}
         </Card>
       )}
     </main>
