@@ -17,19 +17,6 @@ type BuyPassButtonProps = {
   onError?: (error: Error) => void;
 };
 
-const createCommentPayload = (comment: string) => {
-  const textBytes = new TextEncoder().encode(comment);
-  const bytes = new Uint8Array(4 + textBytes.length);
-  bytes.set(textBytes, 4);
-
-  let binary = "";
-  bytes.forEach((byte) => {
-    binary += String.fromCharCode(byte);
-  });
-
-  return btoa(binary);
-};
-
 export const BuyPassButton = ({
   amountNano,
   recipient,
@@ -63,7 +50,6 @@ export const BuyPassButton = ({
     try {
       setPhase("processing");
       const checkout = await onPreparePayment();
-      const payload = createCommentPayload(comment);
 
       const txResult = await tonConnectUI.sendTransaction({
         validUntil: Math.floor(Date.now() / 1000) + 600,
@@ -71,7 +57,6 @@ export const BuyPassButton = ({
           {
             address: recipient,
             amount: String(amountNano),
-            payload,
           },
         ],
       });
